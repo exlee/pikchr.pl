@@ -1,0 +1,22 @@
+[package]
+name = "pikchr_pro"
+version.workspace = true
+edition.workspace = true
+
+
+[features]
+default = ["std", "async"]
+std = ["sync"]
+sync = []
+async = ["dep:tokio"]
+
+[dependencies]
+anyhow = { workspace = true }
+tokio = { workspace = true, optional = true }
+wasmtime = { workspace = true }
+wasmtime-wasi = { workspace = true }
+
+
+[build-dependencies]
+cc = { workspace = true }
+
