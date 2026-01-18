@@ -1,6 +1,5 @@
 use std::io::{self, Read};
 
-use crate::prolog::process_diagram_sync;
 use anyhow::Result;
 
 pub mod pikchr;
