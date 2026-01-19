@@ -3,12 +3,21 @@ use std::{fmt::Write, sync::OnceLock};
 use anyhow::{Context, Result, anyhow};
 use wasmtime::{Engine, Linker, Module, Store};
 use wasmtime_wasi::{
-    WasiCtxBuilder, p1,
+    WasiCtxBuilder,
+    p1,
     p2::pipe::{MemoryInputPipe, MemoryOutputPipe},
 };
 
 use crate::{
-    prolog::{LinkerState, PROLOG_INIT, PrologRuntime, TPL_WASM},
+    prolog::{
+        LinkerState,
+        PROLOG_INIT,
+        PrologRuntime,
+        RenderError,
+        TPL_WASM,
+        build_wasi,
+        process_output,
+    },
     types::PikchrCode,
 };
 
@@ -38,23 +47,10 @@ pub fn get_runtime() -> &'static PrologRuntime {
     })
 }
 
-pub fn run_prolog(input: &str) -> Result<String> {
-    use crate::prolog::PROLOG_INIT;
-
+pub fn run_prolog(input: &str) -> Result<String, RenderError> {
     let runtime = get_runtime();
-    let mut sb = String::new();
-    writeln!(sb, "{}", PROLOG_INIT)?;
-    writeln!(sb, "{}", input)?;
 
-    let stdin = MemoryInputPipe::new(sb);
-    let stdout = MemoryOutputPipe::new(65535);
-
-    let wasi = WasiCtxBuilder::new()
-        .stdin(stdin)
-        .stdout(stdout.clone())
-        .args(&["tpl", "-q", "--consult", "-g", "run, halt"])
-        .inherit_stderr()
-        .build_p1();
+    let (wasi, stdout, stderr) = build_wasi(input)?;
 
     let mut store = Store::new(&runtime.engine, LinkerState { wasi });
 
@@ -62,24 +58,15 @@ pub fn run_prolog(input: &str) -> Result<String> {
 
     let start = instance.get_typed_func::<(), ()>(&mut store, "_start")?;
     start.call(&mut store, ())?;
-
-    let output_bytes = stdout.contents();
-    let output_str =
-        String::from_utf8(output_bytes.to_vec()).context("Prolog output invalid UTF-8")?;
-
-    if output_str.contains("Error: ") {
-        Err(anyhow!(output_str))
-    } else {
-        Ok(output_str)
-    }
+    process_output(stdout, stderr)
 }
-pub fn process_diagram(input: String) -> Result<PikchrCode, String> {
+pub fn process_diagram(input: String) -> Result<PikchrCode, RenderError> {
     let mut data = String::new();
     let _ = writeln!(data, "{}", PROLOG_INIT);
     let _ = writeln!(data, "run :- phrase(diagram, Out), format(\"~s\", [Out]).");
     let _ = writeln!(data, "{}", input);
     run_prolog(&data)
-        .map_err(|e| format!("{}", e))
+        .map_err(|e| RenderError::PrologError(format!("{}", e)))
         .map(|s| PikchrCode::new(s))
 }
 

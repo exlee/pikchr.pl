@@ -12,6 +12,7 @@ async = ["dep:tokio"]
 
 [dependencies]
 anyhow = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true, optional = true }
 wasmtime = { workspace = true }
 wasmtime-wasi = { workspace = true }

@@ -1,4 +1,4 @@
-use crate::types::*;
+use crate::{prolog::RenderError, types::*};
 use std::{
     ffi::{CStr, CString},
     os::raw::{c_char, c_int, c_void},
@@ -86,8 +86,8 @@ impl From<String> for PikchrCode {
     }
 }
 
-pub fn render_pikchr(input: PikchrCode) -> Result<SvgString, String> {
-    let result = render(input.0.as_str(), None, 0)?;
+pub fn render_pikchr(input: PikchrCode) -> Result<SvgString, RenderError> {
+    let result = render(input.0.as_str(), None, 0).map_err(|s| RenderError::PikchrError(s))?;
     Ok(SvgString::from(result))
 }
 pub fn render(text: &str, class_name: Option<&str>, flags: i32) -> Result<PikchrResult, String> {
