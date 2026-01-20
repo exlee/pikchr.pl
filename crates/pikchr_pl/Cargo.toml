@@ -1,0 +1,20 @@
+[package]
+name = "pikchr_pl"
+version = "0.1.0"
+edition = "2024"
+
+
+[[bin]]
+name = "pikchr.pl"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+iced = { workspace = true }
+tokio = { workspace = true }
+pikchr_pro = { path = "../pikchr_pro", features = ["async"] }
+thiserror = { workspace = true }
+rfd = { workspace = true }
+
+[build-dependencies]
+cc = { workspace = true }
