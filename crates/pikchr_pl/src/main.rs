@@ -130,7 +130,7 @@ impl Editor {
             Edit(action) => {
                 self.undo_stack.push(&self.content);
                 self.content.perform(action);
-                Task::none()
+                Task::done(Message::RunLogic)
             },
             PerformAction(action) => {
                 self.content.perform(action);
