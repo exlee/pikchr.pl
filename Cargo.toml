@@ -1,6 +1,7 @@
 [workspace]
 members = [
-  "crates/*"
+  "crates/pikchr_pl",
+  "crates/pikchr_pro"
 ]
 resolver = "3"
 

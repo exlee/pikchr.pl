@@ -3,11 +3,6 @@ name = "pikchr_pro"
 version.workspace = true
 edition.workspace = true
 
-
-[[bin]]
-name = "pikchr.pro"
-path = "src/main.rs"
-
 [features]
 default = ["std", "async"]
 std = ["sync"]
