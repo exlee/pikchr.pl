@@ -67,19 +67,19 @@ jobs:
 
 
           if [ -f "pikchr_pl.exe" ]; then
-            mv pikchr_pl.exe pikchr.pl.exe
-            mv pikchr_pro.exe pikchr.pro.exe
+            mv pikchr_pl.exe  ${{ matrix.target }}-pikchr.pl.exe
+            mv pikchr_pro.exe ${{ matrix.target }}-pikchr.pro.exe
           else
-            mv pikchr_pl pikchr.pl
-            mv pikchr_pro pikchr.pro
+            mv pikchr_pl  ${{ matrix.target }}-pikchr.pl
+            mv pikchr_pro ${{ matrix.target }}-pikchr.pro
           fi
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: binaries-${{ matrix.target }}
           path: |
-            target/${{ matrix.target }}/release/pikchr.pl*
-            target/${{ matrix.target }}/release/pikchr.pro*
+            target/${{ matrix.target }}/release/${{ matrix.target }}-pikchr.pl*
+            target/${{ matrix.target }}/release/${{ matrix.target }}-pikchr.pro*
             !**/*.d
             !**/*.rlib
   release:
@@ -93,7 +93,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-          merge-multiple: false
+          merge-multiple: true
       - name: List Artifacts (Verify)
         run: ls -R artifacts
       - name: Update Nightly Release
