@@ -9,6 +9,11 @@
 
 This project is a fruit of many years of research on various diagrams solutions and I believe it reached endgame. If you think it's worth developing further please sponsor it with a $(VALUE_OF_A_COFFEE) monthly or some. Thanks in advance.
 
+## Installation
+```
+cargo install --git https://github.com/exlee/pikchr.pl
+```
+
 ## Usage
 ### pikchr.pl (GUI)
 
