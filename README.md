@@ -138,13 +138,12 @@ TODO, for now see included LICENSE and attribution files.
 ## Examples
 
 Note: These were taken at different stage of development.
-
-![[grid.png]]
-![[file.png]]
-![[items.png]]
-![[commits.png]]
-![[circles.png]]
-![[events.png]]
+![grid](https://github.com/exlee/pikchr.pl/blob/master/examples/grid.png)
+![file](https://github.com/exlee/pikchr.pl/blob/master/examples/file.png)
+![items](https://github.com/exlee/pikchr.pl/blob/master/examples/items.png)
+![commits](https://github.com/exlee/pikchr.pl/blob/master/examples/commits.png)
+![circles](https://github.com/exlee/pikchr.pl/blob/master/examples/circles.png)
+![events](https://github.com/exlee/pikchr.pl/blob/master/examples/events.png)
 
 [Pikchr]: https://pikchr.org
 [Trealla]: https://github.com/trealla-prolog/trealla
