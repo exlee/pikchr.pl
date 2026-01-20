@@ -10,10 +10,20 @@
 This project is a fruit of many years of research on various diagrams solutions and I believe it reached endgame. If you think it's worth developing further please sponsor it with a $(VALUE_OF_A_COFFEE) monthly or some. Thanks in advance.
 
 ## Installation
+
+Warning: build process is something I'm working on right now, it might fail for unknown reasons
+
 ```
 cargo install --git https://github.com/exlee/pikchr.pl
 ```
 
+or
+
+```
+git clone git@github.com:exlee/pikchr.pl.git
+cd pikchr.pl
+cargo install --path .
+```
 ## Usage
 ### pikchr.pl (GUI)
 
@@ -109,8 +119,20 @@ When searching for resources focus on DCG, because general Prolog, while nice an
 
 TODO, for now see included LICENSE and attribution files.
 
+## License
+
+- Code is licensed with GPLv3 (SPDX: `GPL-3.0-only`)
+- Trealla, Pikchr and Font have separate licenses (See included files)
+- 
+
 ## TODO
 
+- [ ] Add building/release to CI
+- [ ] Add in-app help
+- [ ] Add preview of Pikchr code
+- [ ] Add menus (for modes, about/licenses)
+- [ ] Add SVG/PNG exports (needs menus)
+- [ ] Allow adjustment of preview/code area 
 - [ ] Groom README.md
 - [ ] Add more examples (both source code and images)
 ## Examples
