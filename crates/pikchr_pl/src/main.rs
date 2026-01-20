@@ -43,12 +43,13 @@ use tokio::sync::watch;
 mod editor_state;
 mod keybindings;
 mod messages;
+mod string_ext;
 mod undo;
 
 use editor_state::Editor;
 use messages::Message;
 
-use crate::undo::UndoStack;
+use crate::{string_ext::StringExt, undo::UndoStack};
 
 pub fn main() -> iced::Result {
     prolog::asynch::init();
@@ -251,20 +252,9 @@ impl Editor {
                         self.last_error.set(format!("{:?}", render_error));
                     },
                     ApplicationError::PikchrError(render_error) => {
-                        const MAX_ERROR_LENGTH: usize = 500;
+                        let trimmed = render_error.trim_last_chars(500).trim_last_lines(5);
 
-                        let err_len = render_error.len();
-                        if err_len > MAX_ERROR_LENGTH {
-                            self.last_error.set(String::from(
-                                render_error
-                                    .clone()
-                                    .split_at_checked(err_len - MAX_ERROR_LENGTH)
-                                    .unwrap_or(("", &render_error))
-                                    .1,
-                            ))
-                        } else {
-                            self.last_error.set(render_error);
-                        }
+                        self.last_error.set(trimmed);
                     },
                     ApplicationError::PikchrEmpty => (),
                     ApplicationError::Unknown => self.last_error.set(String::from("Unknown error")),
@@ -326,7 +316,7 @@ impl Editor {
                 .width(Length::Fill)
                 .size(10),
         )
-        .height(Length::Fixed(50.0))
+        .height(Length::Fixed(75.0))
         .padding(10);
 
         let main_content = row![
@@ -372,7 +362,10 @@ impl Editor {
         let border_color = |t: &Theme| t.palette().background.inverse();
 
         let inner_container = container(iced::widget::scrollable(
-            iced::widget::text(code).width(Length::Fill),
+            iced::widget::text(code)
+                .width(Length::Fill)
+                .size(12)
+                .font(iced::font::Font::MONOSPACE),
         ))
         .style(move |theme: &Theme| container::Style {
             background: Some(iced::Background::Color(inner_bg(theme))),
