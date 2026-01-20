@@ -1,7 +1,7 @@
 // This file is part of pikchr.pl.
 //
-// pikchr.pl is free software: you can redistribute it and/or modify it under the
-// terms of the GNU General Public License as published by the Free Software
+// pikchr.pl is free software: you can redistribute it and/or modify it under
+// the terms of the GNU General Public License as published by the Free Software
 // Foundation, version 3 of the License.
 //
 // pikchr.pl is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -21,15 +21,16 @@ use iced::{
 mod key_ext;
 macro_rules! key_dispatch {
     ($key:expr, {
-        named: { $($name:ident => $n_msg:expr),* $(,)? },
-        literals: { $($lit:literal => $l_msg:expr),* $(,)? }
+        $(named: { $($name:ident => $n_msg:expr),* $(,)? },)?
+        $(literals: { $($lit:literal => $l_msg:expr),* $(,)? })?
     }) => {
         match $key {
-            // 1. Expand all Named variants
-            $( Key::Named(keyboard::key::Named::$name) => Some($n_msg), )*
-
-            // 2. Expand all Literal variants
-            $( Key::Character(c) if c.as_str() == $lit => Some($l_msg), )*
+            $(
+                $( Key::Named(keyboard::key::Named::$name) => Some($n_msg), )*
+            )?
+            $(
+                $( Key::Character(c) if c.as_str() == $lit => Some($l_msg), )*
+            )?
 
             _ => None,
         }
@@ -63,7 +64,12 @@ fn global_binding(keypress: impl key_ext::KeypressLike) -> Option<Message> {
             }
         })
     } else {
-        None
+        key_dispatch!(keypress.key(), {
+            named: {
+                F2 => Message::ToggleDebugOverlay
+            },
+            literals: {}
+        })
     }
 }
 

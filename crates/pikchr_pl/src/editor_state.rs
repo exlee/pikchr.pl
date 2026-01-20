@@ -1,7 +1,7 @@
 // This file is part of pikchr.pl.
 //
-// pikchr.pl is free software: you can redistribute it and/or modify it under the
-// terms of the GNU General Public License as published by the Free Software
+// pikchr.pl is free software: you can redistribute it and/or modify it under
+// the terms of the GNU General Public License as published by the Free Software
 // Foundation, version 3 of the License.
 //
 // pikchr.pl is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -37,6 +37,8 @@ pub struct Editor {
     pub modifiers:       Modifiers,
     pub last_error:      Buffered<String>,
     pub current_file:    Option<PathBuf>,
+    pub show_debug:      bool,
+    pub pikchr_code:     Option<PikchrCode>,
     pub dirty:           bool,
 }
 
@@ -55,6 +57,8 @@ impl Default for Editor {
             last_error:      Buffered::new(String::new()),
             current_file:    None,
             dirty:           true,
+            show_debug:      false,
+            pikchr_code:     None,
         }
     }
 }

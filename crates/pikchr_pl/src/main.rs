@@ -1,7 +1,7 @@
 // This file is part of pikchr.pl.
 //
-// pikchr.pl is free software: you can redistribute it and/or modify it under the
-// terms of the GNU General Public License as published by the Free Software
+// pikchr.pl is free software: you can redistribute it and/or modify it under
+// the terms of the GNU General Public License as published by the Free Software
 // Foundation, version 3 of the License.
 //
 // pikchr.pl is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -12,6 +12,7 @@
 // with pikchr.pl. If not, see <https://www.gnu.org/licenses/>.
 
 use std::{
+    fmt::Display,
     path::PathBuf,
     sync::{Arc, atomic::AtomicU64},
     time::Duration,
@@ -30,8 +31,11 @@ use iced::{
         button,
         column,
         container,
+        pick_list,
         radio,
         row,
+        space,
+        stack,
         svg,
         text::Shaping,
         text_editor::{Content, Motion},
@@ -51,15 +55,12 @@ mod messages;
 use editor_state::Editor;
 use messages::Message;
 
-use crate::editor_state::INITIAL_CONTENT;
-
 pub fn main() -> iced::Result {
     prolog::asynch::init();
     iced::application(Editor::new, Editor::update, Editor::view)
         .title(Editor::set_title)
         .font(SPACE_MONO_BYTES)
-        .subscription(Editor::keyboard_subscription)
-        .subscription(Editor::tick_subscription)
+        .subscription(Editor::subscriptions)
         .run()
 }
 
@@ -67,6 +68,15 @@ pub fn main() -> iced::Result {
 enum OperatingMode {
     PikchrMode,
     PrologMode,
+}
+
+impl Display for OperatingMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OperatingMode::PikchrMode => write!(f, "Pikchr Mode"),
+            OperatingMode::PrologMode => write!(f, "Prolog Mode"),
+        }
+    }
 }
 
 impl Editor {
@@ -88,14 +98,13 @@ impl Editor {
     }
     fn update(&mut self, message: Message) -> Task<Message> {
         use Message::*;
+        // Message Matching Logic
         match message {
             Edit(action) => {
                 self.content.perform(action);
                 Task::done(Message::RunLogic)
             },
-
             Ignore => Task::none(),
-
             LoadFileSelected(Some(path_buf)) => {
                 self.current_file = Some(path_buf.clone());
                 if let Ok(file_as_string) = std::fs::read_to_string(&path_buf) {
@@ -107,9 +116,7 @@ impl Editor {
                     )))
                 }
             },
-
             LoadFileSelected(_) => Task::none(),
-
             LoadRequested => {
                 let mode = self.operating_mode;
                 Task::perform(
@@ -128,14 +135,11 @@ impl Editor {
                 self.modifiers = modifiers;
                 Task::none()
             },
-
             NewRequested => self.reset_editor(),
-
             PerformAction(action) => {
                 self.content.perform(action);
                 Task::none()
             },
-
             PerformActions(run_actions, actions) => {
                 for action in actions {
                     self.content.perform(action);
@@ -147,7 +151,6 @@ impl Editor {
                     Task::none()
                 }
             },
-
             PikchrFinished(result) => {
                 self.is_compiling = false;
                 match result {
@@ -167,27 +170,26 @@ impl Editor {
                     },
                 }
             },
-
             PrologFinished(result) => {
                 match result {
-                    Ok(input) => Task::batch(vec![
-                        //Task::done(Message::ShowPikchr(input.clone())),
-                        Task::done(Message::RunPikchr(input)),
-                    ]),
+                    Ok(input) => {
+                        self.pikchr_code = Some(input.clone());
+                        Task::batch(vec![
+                            //Task::done(Message::ShowPikchr(input.clone())),
+                            Task::done(Message::RunPikchr(input)),
+                        ])
+                    },
                     Err(err) => Task::done(Message::ShowError(err)),
                 }
             },
-
             RadioSelected(operating_mode) => {
                 self.operating_mode = operating_mode;
                 Task::done(Message::RunLogic)
             },
-
             RefreshTick => {
                 self.last_error.commit();
                 Task::none()
             },
-
             RunLogic => {
                 let input = self.content.text();
                 match self.operating_mode {
@@ -195,7 +197,6 @@ impl Editor {
                     OperatingMode::PrologMode => Task::done(Message::RunProlog(input)),
                 }
             },
-
             RunPikchr(input) => {
                 let input_rx = self.input_rx.clone();
                 let _ = self.input_tx.send(input);
@@ -204,9 +205,7 @@ impl Editor {
                     Message::PikchrFinished,
                 )
             },
-
             RunProlog(input) => Task::perform(render_diagram(input), Message::PrologFinished),
-
             SaveFileSelected(path_buf_opt) => {
                 self.current_file = path_buf_opt.clone();
                 if let Some(path_buf) = path_buf_opt {
@@ -214,12 +213,10 @@ impl Editor {
                 }
                 Task::done(Message::SaveFinished)
             },
-
             SaveFinished => {
                 self.dirty = false;
                 Task::none()
             },
-
             SaveRequested => {
                 let mode = self.operating_mode;
                 let current_file_opt = self
@@ -246,7 +243,6 @@ impl Editor {
                     Message::SaveFileSelected,
                 )
             },
-
             ShowError(error) => {
                 match error {
                     ApplicationError::PikchrPrologError(render_error) => {
@@ -279,37 +275,14 @@ impl Editor {
                 }
                 Task::none()
             },
-
             ShowPikchr(pikchr_code) => Task::none(),
+            ToggleDebugOverlay => {
+                self.show_debug = !self.show_debug;
+                Task::none()
+            },
         }
     }
     fn view(&self) -> Element<Message> {
-        let pikchr_mode_radio = radio(
-            "Pikchr",
-            OperatingMode::PikchrMode,
-            Some(self.operating_mode),
-            Message::RadioSelected,
-        );
-        let prolog_mode_radio = radio(
-            "Prolog",
-            OperatingMode::PrologMode,
-            Some(self.operating_mode),
-            Message::RadioSelected,
-        );
-        let button_new = button("New").on_press(Message::NewRequested);
-        let button_save = button("Save").on_press(Message::SaveRequested);
-        let button_load = button("Load").on_press(Message::LoadRequested);
-
-        let controls = row![
-            button_new,
-            button_save,
-            button_load,
-            pikchr_mode_radio,
-            prolog_mode_radio
-        ]
-        .align_y(Alignment::Center)
-        .spacing(10);
-
         // Editor Pane
         let input_pane = iced::widget::text_editor(&self.content)
             .on_action(Message::Edit)
@@ -346,36 +319,101 @@ impl Editor {
         .height(Length::Fixed(50.0))
         .padding(10);
 
-        // Layout
-        column![
-            row![
-                column![controls, input_pane]
-                    .width(Length::FillPortion(2))
-                    .spacing(10),
-                column![
-                    iced::widget::text("Output / Preview").size(14),
-                    container(preview_pane)
-                        .style(container::bordered_box)
-                        .width(Length::Fill)
-                        .height(Length::Fill)
-                ]
-                .width(Length::FillPortion(3))
-                .spacing(10)
+        let main_content = row![
+            column![input_pane]
+                .width(Length::FillPortion(2))
+                .spacing(10),
+            column![
+                container(preview_pane)
+                    .style(container::bordered_box)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
             ]
-            .spacing(20)
-            .padding(20),
-            row![info_box]
+            .width(Length::FillPortion(3))
+            .spacing(10)
         ]
-        .spacing(20)
-        .padding(20)
-        .into()
+        .spacing(10);
+        let content = if self.show_debug {
+            stack![main_content, self.debug_overlay()]
+        } else {
+            stack![main_content]
+        };
+        column![self.menu_bar(), content, row![info_box]]
+            .spacing(10)
+            .padding(10)
+            .into()
     }
 
-    fn keyboard_subscription(&self) -> iced::Subscription<Message> {
-        keybindings::listen()
+    fn subscriptions(&self) -> iced::Subscription<Message> {
+        iced::Subscription::batch([
+            iced::time::every(Duration::from_millis(500)).map(|_| Message::RefreshTick),
+            keybindings::listen(),
+        ])
     }
-    fn tick_subscription(&self) -> iced::Subscription<Message> {
-        iced::time::every(Duration::from_millis(500)).map(|_| Message::RefreshTick)
+    fn debug_overlay<'a>(&self) -> Element<'a, Message> {
+        let code = self
+            .pikchr_code
+            .clone()
+            .map(|i| i.clone().into_inner())
+            .unwrap_or_default();
+
+        let inner_bg = |t: &Theme| t.palette().background;
+        let overlay_bg = |t: &Theme| t.palette().background.scale_alpha(0.7);
+        let border_color = |t: &Theme| t.palette().background.inverse();
+
+        let inner_container = container(iced::widget::scrollable(
+            iced::widget::text(code).width(Length::Fill),
+        ))
+        .style(move |theme: &Theme| container::Style {
+            background: Some(iced::Background::Color(inner_bg(theme))),
+            border: iced::Border {
+                color: border_color(theme),
+                width: 2.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .padding(10)
+        .width(Length::Fill)
+        .height(Length::Fill);
+        //.center_x(Length::Fill)
+        //.center_y(Length::Fill);
+
+        let outer_container = container(inner_container)
+            .style(move |theme: &Theme| container::Style {
+                background: Some(iced::Background::Color(overlay_bg(theme))),
+                ..Default::default()
+            })
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .padding(100);
+
+        outer_container.into()
+    }
+    fn menu_bar<'a>(&self) -> Element<'a, Message> {
+        let op_modes = [OperatingMode::PrologMode, OperatingMode::PikchrMode];
+        let operating_mode_list =
+            pick_list(op_modes, Some(self.operating_mode), Message::RadioSelected);
+
+        let button_new = button("New").on_press(Message::NewRequested);
+        let button_save = button("Save").on_press(Message::SaveRequested);
+        let button_load = button("Load").on_press(Message::LoadRequested);
+
+        let toggle_debug = iced::widget::toggler(self.show_debug)
+            .label("Debug Overlay (F2)")
+            .on_toggle(|_| Message::ToggleDebugOverlay);
+
+        row![
+            button_new,
+            button_save,
+            button_load,
+            space::horizontal(),
+            toggle_debug,
+            operating_mode_list,
+        ]
+        .align_y(Alignment::Center)
+        .spacing(10)
+        .into()
     }
 }
 
@@ -399,6 +437,7 @@ async fn render_diagram(input: String) -> Result<PikchrCode, ApplicationError> {
         .await
         .map_err(|s| s.into())
 }
+
 async fn render_pikchr(
     last_successful: bool,
     mut input_rx: watch::Receiver<PikchrCode>,
