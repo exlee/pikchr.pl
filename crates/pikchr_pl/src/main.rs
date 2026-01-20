@@ -11,14 +11,8 @@
 // You should have received a copy of the GNU General Public License along
 // with pikchr.pl. If not, see <https://www.gnu.org/licenses/>.
 
-use std::{
-    fmt::Display,
-    path::PathBuf,
-    sync::{Arc, atomic::AtomicU64},
-    time::Duration,
-};
+use std::{fmt::Display, path::PathBuf, time::Duration};
 
-use anyhow::{Result, anyhow};
 use iced::{
     Alignment,
     Color,
@@ -26,19 +20,17 @@ use iced::{
     Length,
     Task,
     Theme,
-    keyboard::Modifiers,
     widget::{
         button,
         column,
         container,
         pick_list,
-        radio,
         row,
         space,
         stack,
         svg,
         text::Shaping,
-        text_editor::{Content, Motion},
+        text_editor::Content,
     },
 };
 use pikchr_pro::{
@@ -46,14 +38,17 @@ use pikchr_pro::{
     prolog,
 };
 use thiserror::Error;
-use tokio::sync::{RwLock, watch};
+use tokio::sync::watch;
 
 mod editor_state;
 mod keybindings;
 mod messages;
+mod undo;
 
 use editor_state::Editor;
 use messages::Message;
+
+use crate::undo::UndoStack;
 
 pub fn main() -> iced::Result {
     prolog::asynch::init();
@@ -100,15 +95,11 @@ impl Editor {
         use Message::*;
         // Message Matching Logic
         match message {
-            Edit(action) => {
-                self.content.perform(action);
-                Task::done(Message::RunLogic)
-            },
-            Ignore => Task::none(),
             LoadFileSelected(Some(path_buf)) => {
                 self.current_file = Some(path_buf.clone());
                 if let Ok(file_as_string) = std::fs::read_to_string(&path_buf) {
                     self.content = Content::with_text(&file_as_string);
+                    self.undo_stack = UndoStack::new(self.content.clone());
                     Task::done(Message::RunLogic)
                 } else {
                     Task::done(Message::ShowError(ApplicationError::FileLoadFailure(
@@ -136,6 +127,11 @@ impl Editor {
                 Task::none()
             },
             NewRequested => self.reset_editor(),
+            Edit(action) => {
+                self.undo_stack.push(&self.content);
+                self.content.perform(action);
+                Task::none()
+            },
             PerformAction(action) => {
                 self.content.perform(action);
                 Task::none()
@@ -145,6 +141,7 @@ impl Editor {
                     self.content.perform(action);
                 }
                 if run_actions {
+                    self.undo_stack.push(&self.content);
                     let _ = self.input_tx.send(self.content.text().into());
                     Task::done(Message::RunLogic)
                 } else {
@@ -209,7 +206,12 @@ impl Editor {
             SaveFileSelected(path_buf_opt) => {
                 self.current_file = path_buf_opt.clone();
                 if let Some(path_buf) = path_buf_opt {
-                    std::fs::write(path_buf, self.content.text());
+                    match std::fs::write(path_buf, self.content.text()) {
+                        Ok(_) => (),
+                        Err(_) => {
+                            ShowError(ApplicationError::SaveFailure);
+                        },
+                    };
                 }
                 Task::done(Message::SaveFinished)
             },
@@ -272,17 +274,25 @@ impl Editor {
                             path_buf.to_string_lossy()
                         ));
                     },
+                    ApplicationError::SaveFailure => self.last_error.set(error.to_string()),
                 }
                 Task::none()
             },
-            ShowPikchr(pikchr_code) => Task::none(),
             ToggleDebugOverlay => {
                 self.show_debug = !self.show_debug;
                 Task::none()
             },
+            Undo => {
+                self.undo_stack.undo_into(&mut self.content);
+                Task::none()
+            },
+            Redo => {
+                self.undo_stack.redo_into(&mut self.content);
+                Task::none()
+            },
         }
     }
-    fn view(&self) -> Element<Message> {
+    fn view(&self) -> Element<'_, Message> {
         // Editor Pane
         let input_pane = iced::widget::text_editor(&self.content)
             .on_action(Message::Edit)
@@ -291,7 +301,7 @@ impl Editor {
             .size(12)
             .font(iced::font::Font::MONOSPACE);
 
-        let preview_pane: Element<Message> = if let Some(handle) = &self.svg_handle {
+        let preview_pane: Element<'_, Message> = if let Some(handle) = &self.svg_handle {
             // FIX: Clone the handle here.
             // The `svg` widget consumes the handle, it does not take a reference.
             container(svg(handle.clone()).width(Length::Fill).height(Length::Fill))
@@ -350,7 +360,7 @@ impl Editor {
             keybindings::listen(),
         ])
     }
-    fn debug_overlay<'a>(&self) -> Element<'a, Message> {
+    fn debug_overlay(&self) -> Element<'_, Message> {
         let code = self
             .pikchr_code
             .clone()
@@ -390,7 +400,7 @@ impl Editor {
 
         outer_container.into()
     }
-    fn menu_bar<'a>(&self) -> Element<'a, Message> {
+    fn menu_bar(&self) -> Element<'_, Message> {
         let op_modes = [OperatingMode::PrologMode, OperatingMode::PikchrMode];
         let operating_mode_list =
             pick_list(op_modes, Some(self.operating_mode), Message::RadioSelected);
@@ -419,6 +429,8 @@ impl Editor {
 
 #[derive(Error, Debug, Clone)]
 pub enum ApplicationError {
+    #[error("SAVE UNSUCCESSFUL")]
+    SaveFailure,
     #[error("PikchrProlog error: {0}")]
     PikchrPrologError(#[from] pikchr_pro::prolog::RenderError),
     #[error("Pikchr render error: {0}")]

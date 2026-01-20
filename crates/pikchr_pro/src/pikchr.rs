@@ -1,7 +1,7 @@
 // This file is part of pikchr.pl.
 //
-// pikchr.pl is free software: you can redistribute it and/or modify it under the
-// terms of the GNU General Public License as published by the Free Software
+// pikchr.pl is free software: you can redistribute it and/or modify it under
+// the terms of the GNU General Public License as published by the Free Software
 // Foundation, version 3 of the License.
 //
 // pikchr.pl is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -11,12 +11,12 @@
 // You should have received a copy of the GNU General Public License along
 // with pikchr.pl. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::{prolog::RenderError, types::*};
 use std::{
     ffi::{CStr, CString},
     os::raw::{c_char, c_int, c_void},
-    ptr,
 };
+
+use crate::{prolog::RenderError, types::*};
 
 unsafe extern "C" {
     // char *pikchr(const char *zText, const char *zClass, unsigned int mFlags, int
@@ -34,8 +34,8 @@ unsafe extern "C" {
 
 #[derive(Debug)]
 pub struct PikchrResult {
-    ptr: *mut c_char,
-    pub width: i32,
+    ptr:        *mut c_char,
+    pub width:  i32,
     pub height: i32,
 }
 

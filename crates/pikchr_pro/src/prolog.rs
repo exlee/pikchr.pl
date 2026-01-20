@@ -1,7 +1,7 @@
 // This file is part of pikchr.pl.
 //
-// pikchr.pl is free software: you can redistribute it and/or modify it under the
-// terms of the GNU General Public License as published by the Free Software
+// pikchr.pl is free software: you can redistribute it and/or modify it under
+// the terms of the GNU General Public License as published by the Free Software
 // Foundation, version 3 of the License.
 //
 // pikchr.pl is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -11,21 +11,18 @@
 // You should have received a copy of the GNU General Public License along
 // with pikchr.pl. If not, see <https://www.gnu.org/licenses/>.
 
-use std::{fmt::Write, fs::File, sync::OnceLock};
+use std::fmt::Write;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use thiserror::Error;
-use wasmtime::{Engine, Linker, Module, Store};
+use wasmtime::{Engine, Linker, Module};
 use wasmtime_wasi::{
     DirPerms,
     FilePerms,
     WasiCtxBuilder,
-    filesystem::Dir,
-    p1::{self, WasiP1Ctx},
+    p1::WasiP1Ctx,
     p2::pipe::{MemoryInputPipe, MemoryOutputPipe},
 };
-
-use crate::types::*;
 
 static TPL_WASM: &[u8] = include_bytes!("../native/tpl/tpl.wasm");
 static PROLOG_INIT: &str = include_str!("../native/prolog/init.pl");

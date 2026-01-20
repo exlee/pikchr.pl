@@ -20,8 +20,8 @@ use crate::{ApplicationError, OperatingMode};
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    /// Destructive event coming from editor
     Edit(text_editor::Action),
-    Ignore,
     LoadFileSelected(Option<PathBuf>),
     LoadRequested,
     ModifiersChanged(Modifiers),
@@ -39,6 +39,7 @@ pub enum Message {
     SaveFinished,
     SaveRequested,
     ShowError(ApplicationError),
-    ShowPikchr(PikchrCode),
     ToggleDebugOverlay,
+    Undo,
+    Redo,
 }

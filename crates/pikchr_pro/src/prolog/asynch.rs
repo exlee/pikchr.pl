@@ -1,7 +1,7 @@
 // This file is part of pikchr.pl.
 //
-// pikchr.pl is free software: you can redistribute it and/or modify it under the
-// terms of the GNU General Public License as published by the Free Software
+// pikchr.pl is free software: you can redistribute it and/or modify it under
+// the terms of the GNU General Public License as published by the Free Software
 // Foundation, version 3 of the License.
 //
 // pikchr.pl is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -11,14 +11,12 @@
 // You should have received a copy of the GNU General Public License along
 // with pikchr.pl. If not, see <https://www.gnu.org/licenses/>.
 
-use std::{fmt::Write, sync::OnceLock};
+use std::sync::OnceLock;
 
-use anyhow::{Context, Result, anyhow};
 use wasmtime::{Engine, Linker, Module, Store};
 use wasmtime_wasi::{
-    WasiCtxBuilder,
-    p1::{self, WasiP1Ctx},
-    p2::pipe::{MemoryInputPipe, MemoryOutputPipe},
+    self,
+    p1::{self},
 };
 
 use crate::{
@@ -34,7 +32,7 @@ use crate::{
         process_output,
     },
     run_prolog_impl,
-    types::{PikchrCode, *},
+    types::PikchrCode,
 };
 
 static RUNTIME_ASYNC: OnceLock<PrologRuntime> = OnceLock::new();

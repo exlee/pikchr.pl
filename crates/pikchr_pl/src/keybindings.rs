@@ -12,11 +12,12 @@
 // with pikchr.pl. If not, see <https://www.gnu.org/licenses/>.
 
 use iced::{
-    Task,
     event::{self, Event},
-    keyboard::{self, Key, Modifiers},
+    keyboard::{self, Key},
     widget::text_editor::{Action, Binding, Edit, KeyPress, Motion},
 };
+
+use crate::Message;
 
 mod key_ext;
 macro_rules! key_dispatch {
@@ -36,7 +37,6 @@ macro_rules! key_dispatch {
         }
     };
 }
-use crate::{Editor, Message}; // Import Message from root/main
 
 pub fn handle_action(keypress: KeyPress) -> Option<Binding<Message>> {
     let custom_bind = |m: Message| Binding::Custom(m);
@@ -48,6 +48,9 @@ pub fn handle_action(keypress: KeyPress) -> Option<Binding<Message>> {
     if keypress.modifiers.control() {
         return map_emacs_binding(keypress.key).map(custom_bind);
     }
+    if keypress.modifiers.alt() && keypress.modifiers.shift() {
+        return map_emacs_alt_shift_binding(keypress.key).map(custom_bind);
+    }
     if keypress.modifiers.alt() {
         return map_emacs_alt_binding(keypress.key).map(custom_bind);
     }
@@ -56,11 +59,18 @@ pub fn handle_action(keypress: KeyPress) -> Option<Binding<Message>> {
 }
 
 fn global_binding(keypress: impl key_ext::KeypressLike) -> Option<Message> {
-    if keypress.modifiers().command() {
+    if keypress.modifiers().command() && keypress.modifiers().shift() {
         key_dispatch!(keypress.key(), {
             named: {},
             literals: {
-                "s" => Message::SaveRequested,
+                "z" => Message::Redo,
+            }
+        })
+    } else if keypress.modifiers().command() {
+        key_dispatch!(keypress.key(), {
+            named: {},
+            literals: {
+                "z" => Message::Undo,
             }
         })
     } else {
@@ -96,6 +106,14 @@ pub fn listen() -> iced::Subscription<Message> {
         }
     })
 }
+fn map_emacs_alt_shift_binding(key: Key) -> Option<Message> {
+    key_dispatch!(key, {
+        named: {
+            ArrowRight => select_word_right(),
+            ArrowLeft => select_word_left()
+        },
+    })
+}
 fn map_emacs_alt_binding(key: Key) -> Option<Message> {
     key_dispatch!(key, {
         named: {
@@ -117,6 +135,13 @@ fn delete_word() -> Message {
             Action::Edit(Edit::Delete),
         ],
     )
+}
+
+fn select_word_left() -> Message {
+    Message::PerformAction(Action::Select(Motion::WordLeft))
+}
+fn select_word_right() -> Message {
+    Message::PerformAction(Action::Select(Motion::WordRight))
 }
 fn map_emacs_binding(key: Key) -> Option<Message> {
     key_dispatch!(key.clone(), {

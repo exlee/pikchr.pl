@@ -20,7 +20,7 @@ use iced::{
 use pikchr_pro::types::PikchrCode;
 use tokio::sync::watch;
 
-use crate::OperatingMode;
+use crate::{OperatingMode, undo::UndoStack};
 
 pub const INITIAL_CONTENT: &str = r#"diagram -->
   box("Hello").
@@ -40,25 +40,28 @@ pub struct Editor {
     pub show_debug:      bool,
     pub pikchr_code:     Option<PikchrCode>,
     pub dirty:           bool,
+    pub undo_stack:      UndoStack,
 }
 
 impl Default for Editor {
     fn default() -> Self {
         let (tx, rx) = watch::channel(PikchrCode::new(""));
+        let content = text_editor::Content::with_text(INITIAL_CONTENT);
         Self {
-            input_tx:        tx,
-            input_rx:        rx,
-            content:         text_editor::Content::with_text(INITIAL_CONTENT),
-            svg_handle:      None,
-            is_compiling:    false,
+            undo_stack: UndoStack::new(content.clone()),
+            input_tx: tx,
+            input_rx: rx,
+            svg_handle: None,
+            is_compiling: false,
             last_successful: false,
-            operating_mode:  OperatingMode::PrologMode,
-            modifiers:       Modifiers::default(),
-            last_error:      Buffered::new(String::new()),
-            current_file:    None,
-            dirty:           true,
-            show_debug:      false,
-            pikchr_code:     None,
+            operating_mode: OperatingMode::PrologMode,
+            modifiers: Modifiers::default(),
+            last_error: Buffered::new(String::new()),
+            current_file: None,
+            dirty: true,
+            show_debug: false,
+            pikchr_code: None,
+            content,
         }
     }
 }
