@@ -156,3 +156,14 @@ file_as_lines(File) -->
   "down; ",
   { getfile(File, Lines) },
   fas__file_lines(1, Lines).
+
+text_above(L, T) --> "move to ", L, ".nw;", "text ", quoted(T), " center above ;". 
+text_inside(L, T) --> "text ", quoted(T), "center with .center at ", L, ".center".
+
+sized_box(L, W,H) --> sized_box(L,W,H, [""]). 
+sized_box(L, W,H,[]) --> sized_box(L,W,H, [""]). 
+sized_box(L, W,H,Attrs) -->
+  { phrase(words(Attrs), Out) },
+  label(L,
+    box("", (format_("width ~d% height ~d% ~s", [W,H,Out])))), nl.
+
