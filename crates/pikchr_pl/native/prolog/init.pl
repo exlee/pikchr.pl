@@ -113,7 +113,7 @@ attrs(Any) --> words(Any).
 
 expr(V1) --> V1, nl.
 
-exprs(V1) --> expr(V1).
+exprs(V1) --> exprs_(V1).
 exprs(V1,V2) --> exprs_([V1,V2]).
 exprs(V1,V2,V3) --> exprs_([V1,V2,V3]).
 exprs(V1,V2,V3,V4) --> exprs_([V1,V2,V3,V4]).
@@ -124,7 +124,7 @@ exprs(V1,V2,V3,V4,V5,V6,V7,V8) --> exprs_([V1,V2,V3,V4,V5,V6,V7,V8]).
 exprs(V1,V2,V3,V4,V5,V6,V7,V8,V9) --> exprs_([V1,V2,V3,V4,V5,V6,V7,V8,V9]).
 exprs(V1,V2,V3,V4,V5,V6,V7,V8,V9,V10) --> exprs_([V1,V2,V3,V4,V5,V6,V7,V8,V9,V10]).
 
-words(V1) --> words_([V1]).
+words(V1) --> words_(V1).
 words(V1,V2) --> words_([V1,V2]).
 words(V1,V2,V3) --> words_([V1,V2,V3]).
 words(V1,V2,V3,V4) --> words_([V1,V2,V3,V4]).
