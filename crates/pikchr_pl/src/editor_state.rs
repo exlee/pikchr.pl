@@ -15,12 +15,12 @@ use std::path::PathBuf;
 
 use iced::{
     keyboard::Modifiers,
-    widget::{svg, text_editor},
+    widget::{pane_grid, svg, text_editor},
 };
 use pikchr_pro::types::PikchrCode;
 use tokio::sync::watch;
 
-use crate::{OperatingMode, undo::UndoStack};
+use crate::{OperatingMode, PaneContent, undo::UndoStack};
 
 pub const INITIAL_CONTENT: &str = r#"diagram -->
   box("Hello").
@@ -41,12 +41,21 @@ pub struct Editor {
     pub pikchr_code:     Option<PikchrCode>,
     pub dirty:           bool,
     pub undo_stack:      UndoStack,
+    pub panes: pane_grid::State<PaneContent>,
 }
 
 impl Default for Editor {
     fn default() -> Self {
         let (tx, rx) = watch::channel(PikchrCode::new(""));
         let content = text_editor::Content::with_text(INITIAL_CONTENT);
+
+        let (mut pane_state, main_pane) = pane_grid::State::new(PaneContent::Editor);
+        pane_state.split(
+            pane_grid::Axis::Vertical,
+            main_pane,
+            PaneContent::Preview
+        );
+
         Self {
             undo_stack: UndoStack::new(content.clone()),
             input_tx: tx,
@@ -62,6 +71,7 @@ impl Default for Editor {
             show_debug: false,
             pikchr_code: None,
             content,
+            panes: pane_state
         }
     }
 }

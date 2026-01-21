@@ -13,7 +13,7 @@
 
 use std::path::PathBuf;
 
-use iced::{keyboard::Modifiers, widget::text_editor};
+use iced::{keyboard::Modifiers, widget::{pane_grid, text_editor}};
 use pikchr_pro::types::PikchrCode;
 
 use crate::{ApplicationError, OperatingMode};
@@ -42,4 +42,5 @@ pub enum Message {
     ToggleDebugOverlay,
     Undo,
     Redo,
+    PaneResized(pane_grid::ResizeEvent),
 }

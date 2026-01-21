@@ -24,6 +24,7 @@ use iced::{
         button,
         column,
         container,
+        pane_grid,
         pick_list,
         row,
         space,
@@ -64,6 +65,11 @@ pub fn main() -> iced::Result {
 enum OperatingMode {
     PikchrMode,
     PrologMode,
+}
+
+enum PaneContent {
+    Editor,
+    Preview,
 }
 
 impl Display for OperatingMode {
@@ -280,34 +286,52 @@ impl Editor {
                 self.undo_stack.redo_into(&mut self.content);
                 Task::none()
             },
+            PaneResized(pane_grid::ResizeEvent {split, ratio}) => {
+                self.panes.resize(split, ratio);
+                Task::none()
+            },
+            PaneResized(_) => Task::none()
         }
     }
     fn view(&self) -> Element<'_, Message> {
-        // Editor Pane
-        let input_pane = iced::widget::text_editor(&self.content)
-            .on_action(Message::Edit)
-            .key_binding(keybindings::handle_action)
-            .height(Length::Fill)
-            .size(12)
-            .font(iced::font::Font::MONOSPACE);
+        let panes = pane_grid(&self.panes, |pane, content, _is_focused| {
+            // Editor Pane
+            let input_pane: Element<'_, Message> = iced::widget::text_editor(&self.content)
+                .on_action(Message::Edit)
+                .key_binding(keybindings::handle_action)
+                .height(Length::Fill)
+                .size(12)
+                .font(iced::font::Font::MONOSPACE)
+                .into();
 
-        let preview_pane: Element<'_, Message> = if let Some(handle) = &self.svg_handle {
-            // FIX: Clone the handle here.
-            // The `svg` widget consumes the handle, it does not take a reference.
-            container(svg(handle.clone()).width(Length::Fill).height(Length::Fill))
-                .style(|_theme| container::Style {
-                    // Force background to white
-                    background: Some(Color::WHITE.into()),
-                    // Keep other defaults (text color, border, etc.)
-                    ..container::Style::default()
-                })
-                .padding(10)
-                .into()
-        } else {
-            container(iced::widget::text("").font(iced::font::Font::MONOSPACE))
-                .padding(10)
-                .into()
-        };
+            let preview_pane: Element<'_, Message> = if let Some(handle) = &self.svg_handle {
+                // FIX: Clone the handle here.
+                // The `svg` widget consumes the handle, it does not take a reference.
+                container(svg(handle.clone()).width(Length::Fill).height(Length::Fill))
+                    .style(|_theme| container::Style {
+                        // Force background to white
+                        background: Some(Color::WHITE.into()),
+                        // Keep other defaults (text color, border, etc.)
+                        ..container::Style::default()
+                    })
+                    .padding(10)
+                    .into()
+            } else {
+                container(iced::widget::text("").font(iced::font::Font::MONOSPACE))
+                    .padding(10)
+                    .into()
+            };
+
+            let content_widget = match content {
+                PaneContent::Editor => input_pane,
+                PaneContent::Preview => preview_pane,
+            };
+            pane_grid::Content::new(content_widget)
+        })
+        .on_resize(10, Message::PaneResized)
+        .spacing(10)
+        .width(Length::Fill)
+        .height(Length::Fill);
 
         let info_box = container(
             iced::widget::text(self.last_error.get())
@@ -319,24 +343,10 @@ impl Editor {
         .height(Length::Fixed(75.0))
         .padding(10);
 
-        let main_content = row![
-            column![input_pane]
-                .width(Length::FillPortion(2))
-                .spacing(10),
-            column![
-                container(preview_pane)
-                    .style(container::bordered_box)
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-            ]
-            .width(Length::FillPortion(3))
-            .spacing(10)
-        ]
-        .spacing(10);
         let content = if self.show_debug {
-            stack![main_content, self.debug_overlay()]
+            stack![panes, self.debug_overlay()]
         } else {
-            stack![main_content]
+            stack![panes]
         };
         column![self.menu_bar(), content, row![info_box]]
             .spacing(10)
