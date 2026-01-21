@@ -3,14 +3,12 @@ use std::{fmt::Write, sync::OnceLock};
 use anyhow::Context;
 use wasmtime::{Linker, Module, Store};
 use wasmtime_wasi::{
-    DirPerms,
-    FilePerms,
-    WasiCtxBuilder,
+    DirPerms, FilePerms, WasiCtxBuilder,
     p1::{self, WasiP1Ctx},
     p2::pipe::{MemoryInputPipe, MemoryOutputPipe},
 };
 
-static TPL_WASM: &[u8] = include_bytes!("../../../native/tpl/tpl.wasm");
+static TPL_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tpl.bin"));
 use crate::{
     prolog::{PROLOG_INIT, PrologEngine, PrologEngineAsync, PrologInit, Queries, RenderError},
     types::PikchrCode,
@@ -91,7 +89,15 @@ macro_rules! get_runtime_impl {
                 let mut config = wasmtime::Config::new();
                 config.async_support($async_support);
                 let engine = wasmtime::Engine::new(&config).expect("Failed to create async engine");
-                let module = Module::new(&engine, TPL_WASM).expect("Failed to compile WASM");
+                let module = if cfg!(precompiled_wasm) {
+                    unsafe { Module::deserialize(&engine, TPL_BYTES) }.unwrap_or_else(|e| {
+                        eprintln!("AOT load failed ({}), recompiling...", e);
+                        Module::new(&engine, TPL_BYTES).expect("Final fallback failed")
+                    })
+                } else {
+                    Module::new(&engine, TPL_BYTES).expect("Failed to compile raw WASM")
+                };
+                //let module = Module::new(&engine, TPL_WASM).expect("Failed to compile WASM");
 
                 let mut linker = Linker::new(&engine);
                 p1::$linker_fn(&mut linker, |s: &mut LinkerState| &mut s.wasi)
