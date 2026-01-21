@@ -449,7 +449,7 @@ async fn render_pikchr(
 ) -> Option<Result<String, ApplicationError>> {
     let input = input_rx.borrow_and_update().clone();
     if last_successful {
-        tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
 
     if input_rx.has_changed().unwrap_or(false) {
