@@ -1,8 +1,6 @@
-name: Cross Compile
+name: Nightly Build & Release
 on:
-  push:
-    branches: [ "master" ]
-  pull_request:
+  workflow_dispatch:
 env:
   CARGO_TERM_COLOR: always
 permissions:
