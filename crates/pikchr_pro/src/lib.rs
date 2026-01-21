@@ -13,14 +13,14 @@
 
 use anyhow::Result;
 
-use crate::prolog::{RenderError, sync::process_diagram};
+use crate::prolog::{PrologEngine, RenderError, engine};
 
 pub mod pikchr;
 pub mod prolog;
 pub mod types;
 
 pub fn prolog_to_svg_string(input: String) -> Result<String, RenderError> {
-    let result = process_diagram(vec![input])?;
+    let result = engine::trealla::Engine::process_diagram(vec![input])?;
     let svg = pikchr::render_pikchr(result)?;
     Ok(svg.into_inner())
 }

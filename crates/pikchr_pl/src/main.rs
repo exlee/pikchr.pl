@@ -35,7 +35,7 @@ use iced::{
 };
 use pikchr_pro::{
     pikchr::{self, PikchrCode},
-    prolog,
+    prolog::{PrologEngineAsync, PrologInit, engine::trealla::EngineAsync as PrologEngine},
 };
 use thiserror::Error;
 use tokio::sync::watch;
@@ -52,7 +52,7 @@ use messages::Message;
 use crate::{string_ext::StringExt, undo::UndoStack};
 
 pub fn main() -> iced::Result {
-    prolog::asynch::init();
+    PrologEngine::init();
     iced::application(Editor::new, Editor::update, Editor::view)
         .title(Editor::set_title)
         .font(SPACE_MONO_BYTES)
@@ -438,7 +438,7 @@ pub enum ApplicationError {
 
 const INIT: &str = include_str!("../native/prolog/init.pl");
 async fn render_diagram(input: String) -> Result<PikchrCode, ApplicationError> {
-    prolog::asynch::process_diagram(vec![String::from(INIT), input])
+    PrologEngine::process_diagram(vec![String::from(INIT), input])
         .await
         .map_err(|s| s.into())
 }
