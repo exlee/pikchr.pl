@@ -44,126 +44,105 @@ generate_drawing_rule(Name, (Head --> Body)) :-
 			expr(words(NameChars, quoted(Label), Attrs))
     ).
 %% Drawing Rules For Objects
-drawing_object(arc).
-drawing_object(arrow).
-drawing_object(box).
-drawing_object(circle).
-drawing_object(cylinder).
-drawing_object(diamond).
-drawing_object(dot).
-drawing_object(ellipse).
-drawing_object(file).
-drawing_object(line).
-drawing_object(move).
-drawing_object(oval).
-drawing_object(spline).
-drawing_object(text).
-
-basic_term(chop).
-basic_term(fit).
-basic_term(ccw).
-basic_term(cw).
-% Text Attribute
-basic_term(above).
-basic_term(aligned).
-basic_term(below).
-basic_term(big).
-basic_term(bold).
-basic_term(mono).
-basic_term(monospace).
-basic_term(center).
-basic_term(italic).
-basic_term(ljust).
-basic_term(rjust).
-basic_term(small).
-
-% Misc property
-attr_term(fill).
-attr_term(color).
-attr_term(behind).
-% Numeric Property
-attr_term(diameter).
-attr_term(ht).
-attr_term(height).
-attr_term(rad).
-attr_term(radius).
-attr_term(thickness).
-attr_term(width).
-attr_term(wid).
+%drawing_object(arc).
+%drawing_object(arrow).
+%drawing_object(box).
+%drawing_object(circle).
+%drawing_object(cylinder).
+%drawing_object(diamond).
+%drawing_object(dot).
+%drawing_object(ellipse).
+%drawing_object(file).
+%drawing_object(line).
+%drawing_object(move).
+%drawing_object(oval).
+%drawing_object(spline).
+%drawing_object(text).
+%
+%basic_term(chop).
+%basic_term(fit).
+%basic_term(ccw).
+%basic_term(cw).
+%% Text Attribute
+%basic_term(above).
+%basic_term(aligned).
+%basic_term(below).
+%basic_term(big).
+%basic_term(bold).
+%basic_term(mono).
+%basic_term(monospace).
+%basic_term(center).
+%basic_term(italic).
+%basic_term(ljust).
+%basic_term(rjust).
+%basic_term(small).
+%
+%% Misc property
+%attr_term(fill).
+%attr_term(color).
+%attr_term(behind).
+%% Numeric Property
+%attr_term(diameter).
+%attr_term(ht).
+%attr_term(height).
+%attr_term(rad).
+%attr_term(radius).
+%attr_term(thickness).
+%attr_term(width).
+%attr_term(wid).
 
 semicolon --> ";".
 space --> " ".
 nl --> "\n".
+quote --> "\"".
 
 quoted(Name)  --> "\"", Name, "\"".
 squared(Expr) --> "[", Expr, "]".
-label(Label, Expr) --> Label, ": ", squared(Expr), semicolon.
+group(Label, Expr) --> Label, ": ", expr(squared(Expr)).
+expr(V) --> V, nl.
 
 lines(A,B,C) --> quoted(A), space, quoted(B), space, quoted(C).
 lines(A,B) --> quoted(A), space, quoted(B).
 lines(A) --> quoted(A).
 
-exprs_([H]) --> H, nl.
-exprs_([H|T]) --> H, nl, exprs_(T).
+label(I) -->  {  format(string(S), "~w", [I]), string_upper(S, U) },  U.
 
-words_([H]) --> H.
-words_([H|T]) --> H, space, words_(T).
+as(Atom) --> format_("~w", [Atom]).
+ase(Atom) --> expr(as(Atom)).
+asq(Atom) --> quoted(as(Atom)).
+int(V) --> format("~d", [V]).
 
-attrs(Any) --> words(Any).
-
-expr(V1) --> V1, nl.
-
-exprs(V1) --> exprs_(V1).
-exprs(V1,V2) --> exprs_([V1,V2]).
-exprs(V1,V2,V3) --> exprs_([V1,V2,V3]).
-exprs(V1,V2,V3,V4) --> exprs_([V1,V2,V3,V4]).
-exprs(V1,V2,V3,V4,V5) --> exprs_([V1,V2,V3,V4,V5]).
-exprs(V1,V2,V3,V4,V5,V6) --> exprs_([V1,V2,V3,V4,V5,V6]).
-exprs(V1,V2,V3,V4,V5,V6,V7) --> exprs_([V1,V2,V3,V4,V5,V6,V7]).
-exprs(V1,V2,V3,V4,V5,V6,V7,V8) --> exprs_([V1,V2,V3,V4,V5,V6,V7,V8]).
-exprs(V1,V2,V3,V4,V5,V6,V7,V8,V9) --> exprs_([V1,V2,V3,V4,V5,V6,V7,V8,V9]).
-exprs(V1,V2,V3,V4,V5,V6,V7,V8,V9,V10) --> exprs_([V1,V2,V3,V4,V5,V6,V7,V8,V9,V10]).
-
-words(V1) --> words_(V1).
-words(V1,V2) --> words_([V1,V2]).
-words(V1,V2,V3) --> words_([V1,V2,V3]).
-words(V1,V2,V3,V4) --> words_([V1,V2,V3,V4]).
-words(V1,V2,V3,V4,V5) --> words_([V1,V2,V3,V4,V5]).
-words(V1,V2,V3,V4,V5,V6) --> words_([V1,V2,V3,V4,V5,V6]).
-words(V1,V2,V3,V4,V5,V6,V7) --> words_([V1,V2,V3,V4,V5,V6,V7]).
-words(V1,V2,V3,V4,V5,V6,V7,V8) --> words_([V1,V2,V3,V4,V5,V6,V7,V8]).
-words(V1,V2,V3,V4,V5,V6,V7,V8,V9) --> words_([V1,V2,V3,V4,V5,V6,V7,V8,V9]).
-words(V1,V2,V3,V4,V5,V6,V7,V8,V9,V10) --> words_([V1,V2,V3,V4,V5,V6,V7,V8,V9,V10]).
-
+mod(grid).
 grid2x2(A,B,C,D) -->
   label("GRID",
-  exprs(box(A), "down", box(C), "right", box(D), "up", box(B))).
+    (box(A), "down", box(C), "right", box(D), "up", box(B))).
 
-
-
-fas__file_text(N,'') --> fas__file_text(N, ' ').
-fas__file_text(N, T) --> 
+mod(fas).
+file_text(N,'') --> file_text(N, ' ').
+file_text(N, T) --> 
   { replace(T, '"', '\\"', NT) },
   format_("L~d: text \"~d: ~s\" ljust~n", [N, N, NT]).
 
-fas__file_lines(_,[]) --> [].
-fas__file_lines(N,[H|T]) -->
-  fas__file_text(N,H), { NN is N + 1 },
-  fas__file_lines(NN,T).
+file_lines(_,[]) --> [].
+file_lines(N,[H|T]) -->
+  file_text(N,H), { NN is N + 1 },
+  file_lines(NN,T).
 
             
 file_as_lines(File) --> 
   "down; ",
   { getfile(File, Lines) },
-  fas__file_lines(1, Lines).
+  file_lines(1, Lines).
 
+mod(place_text).
 text_above(L, T) --> "move to ", L, ".nw;", "text ", quoted(T), " center above ;". 
 text_inside(L, T) --> "text ", quoted(T), "center with .center at ", L, ".center".
 
+mod(sized_box).
 sized_box(L, W,H) --> sized_box(L,W,H, [""]). 
 sized_box(L, W,H,[]) --> sized_box(L,W,H, [""]). 
 sized_box(L, W,H,Attrs) -->
   { phrase(words(Attrs), Out) },
-  label(L,
+  group(L,
     box("", (format_("width ~d% height ~d% ~s", [W,H,Out])))), nl.
 
