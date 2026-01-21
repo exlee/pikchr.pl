@@ -17,7 +17,7 @@ use iced::{
     widget::text_editor::{Action, Binding, Edit, KeyPress, Motion},
 };
 
-use crate::Message;
+use crate::{Message, messages::EditorAction};
 
 mod key_ext;
 macro_rules! key_dispatch {
@@ -39,23 +39,24 @@ macro_rules! key_dispatch {
 }
 
 pub fn handle_action(keypress: KeyPress) -> Option<Binding<Message>> {
-    let custom_bind = |m: Message| Binding::Custom(m);
-
     if global_binding(keypress.clone()).is_some() {
         return None;
     }
 
-    if keypress.modifiers.control() {
-        return map_emacs_binding(keypress.key).map(custom_bind);
-    }
-    if keypress.modifiers.alt() && keypress.modifiers.shift() {
-        return map_emacs_alt_shift_binding(keypress.key).map(custom_bind);
-    }
-    if keypress.modifiers.alt() {
-        return map_emacs_alt_binding(keypress.key).map(custom_bind);
-    }
+    let mods = &keypress.modifiers;
+    let key = &keypress.key;
 
-    Binding::from_key_press(keypress)
+    let message = match (mods.control(), mods.alt(), mods.shift()) {
+        (true, _, _) => map_emacs_binding(key.clone()),
+        (_, true, true) => map_emacs_alt_shift_binding(key.clone()),
+        (_, true, _) => map_emacs_alt_binding(key.clone()),
+        (_, _, true) => map_emacs_shift_binding(key.clone()),
+        _ => map_emacs_no_modifiers(key.clone()),
+    };
+    match message {
+        Some(m) => Some(Binding::Custom(m)),
+        None => Binding::from_key_press(keypress),
+    }
 }
 
 fn global_binding(keypress: impl key_ext::KeypressLike) -> Option<Message> {
@@ -104,6 +105,21 @@ pub fn listen() -> iced::Subscription<Message> {
         } else {
             None
         }
+    })
+}
+fn map_emacs_shift_binding(key: Key) -> Option<Message> {
+    key_dispatch!(key, {
+        named: {
+            Tab => Message::EditorAction(EditorAction::Dedent),
+        },
+    })
+}
+fn map_emacs_no_modifiers(key: Key) -> Option<Message> {
+    key_dispatch!(key, {
+        named: {
+            Tab => Message::EditorAction(EditorAction::Indent),
+            Enter => Message::EditorAction(EditorAction::NewlineIndent),
+        },
     })
 }
 fn map_emacs_alt_shift_binding(key: Key) -> Option<Message> {

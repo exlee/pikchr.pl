@@ -42,6 +42,7 @@ use thiserror::Error;
 use tokio::sync::watch;
 
 mod editor_state;
+mod editor_actions_handler;
 mod keybindings;
 mod messages;
 mod string_ext;
@@ -290,11 +291,12 @@ impl Editor {
                 self.panes.resize(split, ratio);
                 Task::none()
             },
-            PaneResized(_) => Task::none()
+            EditorAction(msg) => editor_actions_handler::handle(self, msg),
+
         }
     }
     fn view(&self) -> Element<'_, Message> {
-        let panes = pane_grid(&self.panes, |pane, content, _is_focused| {
+        let panes = pane_grid(&self.panes, |_pane, content, _is_focused| {
             // Editor Pane
             let input_pane: Element<'_, Message> = iced::widget::text_editor(&self.content)
                 .on_action(Message::Edit)

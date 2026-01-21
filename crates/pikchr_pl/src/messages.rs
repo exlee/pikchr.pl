@@ -18,6 +18,13 @@ use pikchr_pro::types::PikchrCode;
 
 use crate::{ApplicationError, OperatingMode};
 
+#[derive(Debug, Clone, Copy)]
+pub enum EditorAction {
+    Dedent,
+    Indent,
+    NewlineIndent,
+}
+
 #[derive(Debug, Clone)]
 pub enum Message {
     /// Destructive event coming from editor
@@ -43,4 +50,5 @@ pub enum Message {
     Undo,
     Redo,
     PaneResized(pane_grid::ResizeEvent),
+    EditorAction(EditorAction),
 }
