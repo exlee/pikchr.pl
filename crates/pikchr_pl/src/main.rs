@@ -40,8 +40,10 @@ use messages::Message;
 
 use crate::{string_ext::StringExt, undo::UndoStack};
 
+const PROLOG_INIT: &str = include_str!("../native/prolog/init.pl");
+
 pub fn main() -> iced::Result {
-    PrologEngine::init();
+    PrologEngine::init(Some(String::from(PROLOG_INIT)));
     iced::application(Editor::new, Editor::update, Editor::view)
         .title(Editor::set_title)
         .font(SPACE_MONO_BYTES)
@@ -480,9 +482,8 @@ pub enum ApplicationError {
     Unknown,
 }
 
-const INIT: &str = include_str!("../native/prolog/init.pl");
 async fn render_diagram(input: String) -> Result<PikchrCode, ApplicationError> {
-    PrologEngine::process_diagram(vec![String::from(INIT), input])
+    PrologEngine::process_diagram(vec![input])
         .await
         .map_err(|s| s.into())
 }

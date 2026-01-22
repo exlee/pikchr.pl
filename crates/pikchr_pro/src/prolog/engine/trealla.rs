@@ -27,11 +27,15 @@ pub(crate) struct PrologRuntime {
     pub engine: wasmtime::Engine,
     pub module: Module,
     pub linker: Linker<LinkerState>,
+    pub init_data: Option<String>,
 }
 
-fn build_wasi(input: Queries) -> Result<WasiCtxWithCtx, RenderError> {
+fn build_wasi(input: Queries, init_data: Option<String>) -> Result<WasiCtxWithCtx, RenderError> {
     let mut sb = String::new();
-    writeln!(sb, "{}", PROLOG_INIT)?;
+    if let Some(data) = init_data {
+        writeln!(sb, "{}", data);
+    }
+    //writeln!(sb, "{}", PROLOG_INIT)?;
     for query in input {
         writeln!(sb, "{}", query)?;
     }
@@ -44,7 +48,7 @@ fn build_wasi(input: Queries) -> Result<WasiCtxWithCtx, RenderError> {
         .stdin(stdin)
         .stdout(stdout.clone())
         .stderr(stdout.clone())
-        .args(&["tpl", "-q", "--consult", "-g", "run, halt"])
+        .args(&["tpl", "-q", "--consult", "-g", "runtime:run, halt"])
         .preopened_dir(".", "/", DirPerms::READ, FilePerms::READ)
         .expect("Can't open current dir as root")
         .env("PWD", "/")
@@ -84,7 +88,7 @@ macro_rules! get_runtime_impl {
 
 
     ) => {
-        fn get_runtime() -> &'static PrologRuntime {
+        fn get_runtime_with_init(init_data: Option<String>) -> &'static PrologRuntime {
             $runtime.get_or_init(|| {
                 let mut config = wasmtime::Config::new();
                 config.async_support($async_support);
@@ -107,6 +111,7 @@ macro_rules! get_runtime_impl {
                     engine,
                     module,
                     linker,
+                    init_data,
                 }
             })
         }
@@ -136,9 +141,10 @@ macro_rules! run_prolog_impl {
             await_token: $($await:tt)*
         ) => {
                 $($async_kw)? fn run_prolog(input: Queries) -> Result<String, RenderError> {
-                    let runtime = Self::get_runtime();
+                    // At this point runtime should be initialized
+                    let runtime = Self::get_runtime_with_init(None);
 
-                    let (wasi, stdout, stderr) = build_wasi(input)?;
+                    let (wasi, stdout, stderr) = build_wasi(input, runtime.init_data.clone())?;
                     let mut store = Store::new(&runtime.engine, LinkerState { wasi });
 
                     let instance = runtime
@@ -149,9 +155,9 @@ macro_rules! run_prolog_impl {
 
                     let start = instance.get_typed_func::<(), ()>(&mut store, "_start")?;
 
-                    start
+                    let _ = start
                         .$call_fn(&mut store, ())
-                        $($await)* ?;
+                        $($await)* ;
 
                     process_output(stdout, stderr)
                 }
@@ -176,8 +182,8 @@ impl Engine {
     );
 }
 impl PrologInit for Engine {
-    fn init() {
-        Self::get_runtime();
+    fn init(init_data: Option<String>) {
+        Self::get_runtime_with_init(init_data);
     }
 }
 impl PrologEngine for Engine {
@@ -200,8 +206,8 @@ impl EngineAsync {
     );
 }
 impl PrologInit for EngineAsync {
-    fn init() {
-        Self::get_runtime();
+    fn init(init_data: Option<String>) {
+        Self::get_runtime_with_init(init_data);
     }
 }
 impl PrologEngineAsync for EngineAsync {

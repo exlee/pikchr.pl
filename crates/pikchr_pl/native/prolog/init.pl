@@ -2,6 +2,7 @@
 :- use_module(library(format)).
 :- use_module(library(dcgs)).
 
+
 term_expansion(drawing_object(Name), PrologClauses) :-
     findall(Rule, generate_drawing_rule(Name, Rule), Rules), 
     maplist(expand_term, Rules, PrologClauses)
@@ -35,13 +36,14 @@ generate_drawing_rule(Name, (Head --> Body)) :-
 		atom_chars(Name, NameChars),
     Head =.. [Name, Label],
     Body = (
-			expr(words(NameChars, quoted(Label)))
+     
+      as(Name), asq(Label), nl
     ).
 generate_drawing_rule(Name, (Head --> Body)) :-
 		atom_chars(Name, NameChars),
     Head =.. [Name, Label,Attrs],
     Body = (
-			expr(words(NameChars, quoted(Label), Attrs))
+      as(Name), asq(Label), space, Attrs, nl
     ).
 %% Drawing Rules For Objects
 %drawing_object(arc).
@@ -96,9 +98,14 @@ space --> " ".
 nl --> "\n".
 quote --> "\"".
 
+
 quoted(Name)  --> "\"", Name, "\"".
 squared(Expr) --> "[", Expr, "]".
-group(Label, Expr) --> Label, ": ", squared(Expr), nl.
+
+group(Label, Expr) --> { atom(Label) }, label(Label), ": ", squared(Expr), nl.
+group(Label, Expr) --> { string(Label), string_upper(Label, Up) }, Up, ": ", squared(Expr), nl.
+group(label(Label), Expr) --> label(Label), ": ", squared(Expr), nl.
+
 expr(V) --> V, nl.
 
 lines(A,B,C) --> quoted(A), space, quoted(B), space, quoted(C).
@@ -120,12 +127,17 @@ at(Comp) --> { Comp =.. [K, Value] }, as(K), space, as(Value).
 at(K, V) --> as(K), space, as(V).
 int(V) --> format("~d", [V]).
 
-mod(grid).
+space_separated([Item]) --> Item.
+space_separated([H|Rest]) --> H, space, space_separated(Rest).
+space_separated([]) --> [].
+
+:- module(grid).
 grid2x2(A,B,C,D) -->
   label("GRID",
     (box(A), "down", box(C), "right", box(D), "up", box(B))).
 
-mod(fas).
+:- module(file_as_lines).
+
 file_text(N,'') --> file_text(N, ' ').
 file_text(N, T) --> 
   { replace(T, '"', '\\"', NT) },
@@ -137,42 +149,76 @@ file_lines(N,[H|T]) -->
   file_lines(NN,T).
 
             
-file_as_lines(File) --> 
+show(File) --> 
   "down; ",
   { getfile(File, Lines) },
   file_lines(1, Lines).
 
-mod(place_text).
+:- module(txt).
 text_above(L, T) --> "move to ", L, ".nw;", "text ", quoted(T), " center above ;". 
 text_inside(L, T) --> "text ", quoted(T), "center with .center at ", L, ".center".
 
-mod(sized_box).
-sized_box(L, W,H) --> sized_box(L,W,H, [""]). 
-sized_box(L, W,H,[]) --> sized_box(L,W,H, [""]). 
+text_inner(At, Text) --> "dot invis;", "text ", asq(Text), "below  at ", label(At), ".n", ";move to last dot;", nl.
+text_outer(At, Text) --> "text ", asq(Text), "above  at ", label(At), ".n + (0,0.05)", nl.
+
+text_center(At, Text) -->
+  "dot invis;",
+  "text ", asq(Text), "at ", label(At), nl.
+
+:- module(basic). 
+drawing_object(box).
+
+:- module(sized_box).
+
+sized_box(L, W,H) --> sized_box(L,W,H,[]). 
 sized_box(L, W,H,Attrs) -->
-  { phrase(words(Attrs), Out) },
   group(L,
-    box("", (format_("width ~d% height ~d% ~s", [W,H,Out])))), nl.
+    basic:box(' ', (format_("width ~d% height ~d%", [W,H]), space, space_separated(Attrs)))
+  ), nl.
 
 
-mod(testing).
-%:- dynamic(test/1).
-%test(label_atom) :- phrase(label(a), "A"). 
-%test(label_string) :- phrase(label("abc"), "ABC").
-%test(label_replace) :- phrase(label('hello.pl'), "HELLO_PL").
-%test(attr) :- phrase(at(fill, red), "fill red").
-%test(attr_compound) :- phrase(at(fill(red)), "fill red").
-%
-%test_result(X) :-
-%  ( test(X)
-%  -> R = ok
-%  ;  R = failure
-%  ),
-%  format("~2+..~a~20|~t ~a~n", [X,R]).
-%tests :-
-%    format("~ntesting~n~n"),
-%    forall(clause(test(Name), _Body), test_result(Name)),
-%    nl.
-  
-mod(user).
-%run_init_tests :- testing:tests.
+:- module(shapes).
+
+socket(L, Dir, T) --> "box at ", label(L), ".", as(Dir),
+                      " width 20%", " fit", " fill white", semicolon,
+                      "line from last box.s to last box.n invisible ", quoted(T), " aligned",
+                      nl.
+entry(L, T) --> socket(L,w,T).
+exit(L, T) --> socket(L,e,T).
+box(L) --> label(L), ": ", as(box), space, as(rad), " 0.05 ".
+move_to(L, Dir) --> "move to ", label(L), ".", as(Dir), nl. 
+pipe(L, A, Entry, Exit) --> box(L), " height 80%", " width 80%",
+               semicolon, place_text:text_outer(L, A),
+               entry(L, Entry),
+               exit(L, Exit),
+               move_to(L, e).
+
+:- module(testing).
+:- dynamic(test/1).
+test(label_atom) :- phrase(label(a), "A"). 
+test(label_string) :- phrase(label("abc"), "ABC").
+test(label_replace) :- phrase(label('hello.pl'), "HELLO_PL").
+test(attr) :- phrase(at(fill, red), "fill red").
+test(attr_compound) :- phrase(at(fill(red)), "fill red").
+test(group_string) :- phrase(group("abc", ase(box)), "ABC: [box\n]\n").
+test(group_atom) :- phrase(group(def, ase(box)), "DEF: [box\n]\n").
+test(group_label) :- phrase(group(label(ghi), ase(box)),  "GHI: [box\n]\n").
+
+test_result(X) :-
+  ( test(X)
+  -> R = ok
+  ;  R = failure
+  ),
+  format("~2+..~a~20|~t ~a~n", [X,R]).
+tests :-
+    format("~ntesting~n~n"),
+    forall(clause(test(Name), _Body), test_result(Name)),
+    nl.
+
+
+%diagram --> shapes:pipe("A","B","C","D").
+
+:- module(runtime).
+run :- phrase(query:diagram, Out), format("~s", [Out]).
+:- module(query).
+
