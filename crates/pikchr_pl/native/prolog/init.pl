@@ -105,11 +105,19 @@ lines(A,B,C) --> quoted(A), space, quoted(B), space, quoted(C).
 lines(A,B) --> quoted(A), space, quoted(B).
 lines(A) --> quoted(A).
 
-label(I) -->  {  format(string(S), "~w", [I]), string_upper(S, U) },  U.
+label(I) -->  {
+   ( atomic(I)
+   -> format(string(S), "~w", [I])
+   ;  format(string(S), "~s", [I])
+   ),  replace(S, '.', '_', NS), string_upper(NS, U) },  U.
+
+label(I) -->  {  \+atomic(I), string_upper(I, U) },  U.
 
 as(Atom) --> format_("~w", [Atom]).
 ase(Atom) --> expr(as(Atom)).
 asq(Atom) --> quoted(as(Atom)).
+at(Comp) --> { Comp =.. [K, Value] }, as(K), space, as(Value).
+at(K, V) --> as(K), space, as(V).
 int(V) --> format("~d", [V]).
 
 mod(grid).
@@ -146,3 +154,25 @@ sized_box(L, W,H,Attrs) -->
   group(L,
     box("", (format_("width ~d% height ~d% ~s", [W,H,Out])))), nl.
 
+
+mod(testing).
+%:- dynamic(test/1).
+%test(label_atom) :- phrase(label(a), "A"). 
+%test(label_string) :- phrase(label("abc"), "ABC").
+%test(label_replace) :- phrase(label('hello.pl'), "HELLO_PL").
+%test(attr) :- phrase(at(fill, red), "fill red").
+%test(attr_compound) :- phrase(at(fill(red)), "fill red").
+%
+%test_result(X) :-
+%  ( test(X)
+%  -> R = ok
+%  ;  R = failure
+%  ),
+%  format("~2+..~a~20|~t ~a~n", [X,R]).
+%tests :-
+%    format("~ntesting~n~n"),
+%    forall(clause(test(Name), _Body), test_result(Name)),
+%    nl.
+  
+mod(user).
+%run_init_tests :- testing:tests.
