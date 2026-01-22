@@ -108,6 +108,7 @@ impl Editor {
                 if let Ok(file_as_string) = std::fs::read_to_string(&path_buf) {
                     self.content = Content::with_text(&file_as_string);
                     self.undo_stack = UndoStack::new(self.content.clone());
+                    self.dirty = false;
                     Task::done(Message::RunLogic)
                 } else {
                     Task::done(Message::ShowError(ApplicationError::FileLoadFailure(
@@ -137,11 +138,13 @@ impl Editor {
             NewRequested => self.reset_editor(),
             Edit(action) => {
                 self.undo_stack.push(&self.content);
+                self.dirty = true;
                 self.content.perform(action);
                 Task::done(Message::RunLogic)
             },
             PerformAction(action) => {
                 self.content.perform(action);
+                self.dirty = true;
                 Task::none()
             },
             PerformActions(run_actions, actions) => {
@@ -150,6 +153,7 @@ impl Editor {
                 }
                 if run_actions {
                     self.undo_stack.push(&self.content);
+                    self.dirty = true;
                     let _ = self.input_tx.send(self.content.text().into());
                     Task::done(Message::RunLogic)
                 } else {
