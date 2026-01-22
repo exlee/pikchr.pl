@@ -42,6 +42,7 @@ pub struct Editor {
     pub dirty:           bool,
     pub undo_stack:      UndoStack,
     pub panes: pane_grid::State<PaneContent>,
+    pub file_watch_mode: bool,
 }
 
 impl Default for Editor {
@@ -70,6 +71,7 @@ impl Default for Editor {
             dirty: true,
             show_debug: false,
             pikchr_code: None,
+            file_watch_mode: false,
             content,
             panes: pane_state
         }

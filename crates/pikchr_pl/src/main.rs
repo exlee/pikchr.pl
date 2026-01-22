@@ -14,23 +14,9 @@
 use std::{fmt::Display, path::PathBuf, time::Duration};
 
 use iced::{
-    Alignment,
-    Color,
-    Element,
-    Length,
-    Task,
-    Theme,
+    Alignment, Color, Element, Length, Task, Theme,
     widget::{
-        button,
-        column,
-        container,
-        pane_grid,
-        pick_list,
-        row,
-        space,
-        stack,
-        svg,
-        text::Shaping,
+        button, column, container, pane_grid, pick_list, row, space, stack, svg, text::Shaping,
         text_editor::Content,
     },
 };
@@ -41,8 +27,9 @@ use pikchr_pro::{
 use thiserror::Error;
 use tokio::sync::watch;
 
-mod editor_state;
 mod editor_actions_handler;
+mod editor_state;
+mod file_watcher;
 mod keybindings;
 mod messages;
 mod string_ext;
@@ -104,15 +91,17 @@ impl Editor {
         // Message Matching Logic
         match message {
             LoadFileSelected(Some(path_buf)) => {
-                self.current_file = Some(path_buf.clone());
-                if let Ok(file_as_string) = std::fs::read_to_string(&path_buf) {
+                self.current_file = Some(path_buf);
+                let path_ref: &PathBuf = self.current_file.as_ref().unwrap();
+                
+                if let Ok(file_as_string) = std::fs::read_to_string(path_ref) {
                     self.content = Content::with_text(&file_as_string);
                     self.undo_stack = UndoStack::new(self.content.clone());
                     self.dirty = false;
                     Task::done(Message::RunLogic)
                 } else {
                     Task::done(Message::ShowError(ApplicationError::FileLoadFailure(
-                        path_buf,
+                        path_ref.clone(),
                     )))
                 }
             },
@@ -290,6 +279,10 @@ impl Editor {
                 self.show_debug = !self.show_debug;
                 Task::none()
             },
+            ToggleFileWatch => {
+                self.file_watch_mode = !self.file_watch_mode;
+                Task::none()
+            },
             Undo => {
                 self.undo_stack.undo_into(&mut self.content);
                 Task::none()
@@ -298,46 +291,19 @@ impl Editor {
                 self.undo_stack.redo_into(&mut self.content);
                 Task::none()
             },
-            PaneResized(pane_grid::ResizeEvent {split, ratio}) => {
+            PaneResized(pane_grid::ResizeEvent { split, ratio }) => {
                 self.panes.resize(split, ratio);
                 Task::none()
             },
             EditorAction(msg) => editor_actions_handler::handle(self, msg),
-
+            LoadedFileChanged => Task::done(Message::LoadFileSelected(self.current_file.clone())),
         }
     }
     fn view(&self) -> Element<'_, Message> {
         let panes = pane_grid(&self.panes, |_pane, content, _is_focused| {
-            // Editor Pane
-            let input_pane: Element<'_, Message> = iced::widget::text_editor(&self.content)
-                .on_action(Message::Edit)
-                .key_binding(keybindings::handle_action)
-                .height(Length::Fill)
-                .size(12)
-                .font(iced::font::Font::MONOSPACE)
-                .into();
-
-            let preview_pane: Element<'_, Message> = if let Some(handle) = &self.svg_handle {
-                // FIX: Clone the handle here.
-                // The `svg` widget consumes the handle, it does not take a reference.
-                container(svg(handle.clone()).width(Length::Fill).height(Length::Fill))
-                    .style(|_theme| container::Style {
-                        // Force background to white
-                        background: Some(Color::WHITE.into()),
-                        // Keep other defaults (text color, border, etc.)
-                        ..container::Style::default()
-                    })
-                    .padding(10)
-                    .into()
-            } else {
-                container(iced::widget::text("").font(iced::font::Font::MONOSPACE))
-                    .padding(10)
-                    .into()
-            };
-
             let content_widget = match content {
-                PaneContent::Editor => input_pane,
-                PaneContent::Preview => preview_pane,
+                PaneContent::Editor => self.input_pane(),
+                PaneContent::Preview => self.preview_pane(),
             };
             pane_grid::Content::new(content_widget)
         })
@@ -356,10 +322,16 @@ impl Editor {
         .height(Length::Fixed(75.0))
         .padding(10);
 
-        let content = if self.show_debug {
-            stack![panes, self.debug_overlay()]
+        let main_pane = if self.file_watch_mode {
+            self.preview_pane()
         } else {
-            stack![panes]
+            panes.into()
+        };
+
+        let content = if self.show_debug {
+            stack![main_pane, self.debug_overlay()]
+        } else {
+            stack![main_pane]
         };
         column![self.menu_bar(), content, row![info_box]]
             .spacing(10)
@@ -368,10 +340,44 @@ impl Editor {
     }
 
     fn subscriptions(&self) -> iced::Subscription<Message> {
-        iced::Subscription::batch([
+        let mut subscriptions = vec![
             iced::time::every(Duration::from_millis(500)).map(|_| Message::RefreshTick),
             keybindings::listen(),
-        ])
+        ];
+        match (self.file_watch_mode, &self.current_file) {
+            (true, Some(file)) => subscriptions.push(file_watcher::file_watcher(file)),
+            _ => (),
+        }
+        iced::Subscription::batch(subscriptions)
+    }
+
+    fn input_pane(&self) -> Element<'_, Message> {
+        iced::widget::text_editor(&self.content)
+            .on_action(Message::Edit)
+            .key_binding(keybindings::handle_action)
+            .height(Length::Fill)
+            .size(12)
+            .font(iced::font::Font::MONOSPACE)
+            .into()
+    }
+    fn preview_pane(&self) -> Element<'_, Message> {
+        if let Some(handle) = &self.svg_handle {
+            // FIX: Clone the handle here.
+            // The `svg` widget consumes the handle, it does not take a reference.
+            container(svg(handle.clone()).width(Length::Fill).height(Length::Fill))
+                .style(|_theme| container::Style {
+                    // Force background to white
+                    background: Some(Color::WHITE.into()),
+                    // Keep other defaults (text color, border, etc.)
+                    ..container::Style::default()
+                })
+                .padding(10)
+                .into()
+        } else {
+            container(iced::widget::text("").font(iced::font::Font::MONOSPACE))
+                .padding(10)
+                .into()
+        }
     }
     fn debug_overlay(&self) -> Element<'_, Message> {
         let code = self
@@ -424,21 +430,31 @@ impl Editor {
         let button_new = button("New").on_press(Message::NewRequested);
 
         let button_save = if self.modifiers.command() {
-                button("Save As").on_press(Message::SaveAsRequested)
-            } else {
-                button("Save").on_press(Message::SaveRequested)
-            };
+            button("Save As").on_press(Message::SaveAsRequested)
+        } else {
+            button("Save").on_press(Message::SaveRequested)
+        };
         let button_load = button("Load").on_press(Message::LoadRequested);
 
         let toggle_debug = iced::widget::toggler(self.show_debug)
             .label("Debug Overlay (F2)")
             .on_toggle(|_| Message::ToggleDebugOverlay);
 
+        let toggle_watch: Element<'_, Message> = if self.current_file.is_some() {
+            iced::widget::toggler(self.file_watch_mode)
+                .label("File Watch Mode")
+                .on_toggle(|_| Message::ToggleFileWatch)
+                .into()
+        } else {
+            space::horizontal().into()
+        };
+
         row![
             button_new,
             button_save,
             button_load,
             space::horizontal(),
+            toggle_watch,
             toggle_debug,
             operating_mode_list,
         ]

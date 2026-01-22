@@ -98,7 +98,7 @@ quote --> "\"".
 
 quoted(Name)  --> "\"", Name, "\"".
 squared(Expr) --> "[", Expr, "]".
-group(Label, Expr) --> Label, ": ", expr(squared(Expr)).
+group(Label, Expr) --> Label, ": ", squared(Expr), nl.
 expr(V) --> V, nl.
 
 lines(A,B,C) --> quoted(A), space, quoted(B), space, quoted(C).

@@ -50,6 +50,8 @@ pub enum Message {
     ToggleDebugOverlay,
     Undo,
     Redo,
+    ToggleFileWatch,
     PaneResized(pane_grid::ResizeEvent),
     EditorAction(EditorAction),
+    LoadedFileChanged
 }

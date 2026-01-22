@@ -23,6 +23,8 @@ tokio = { workspace = true }
 pikchr_pro = { path = "../pikchr_pro", features = ["async"] }
 thiserror = { workspace = true }
 rfd = { workspace = true }
+image =  { workspace = true }
+notify = { workspace = true }
 
 [build-dependencies]
 cc = { workspace = true }
