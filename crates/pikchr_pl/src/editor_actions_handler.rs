@@ -54,9 +54,16 @@ pub fn handle(editor: &mut Editor, msg: EditorAction) -> Task<Message> {
                 .line(cursor.position.line)
                 .expect("Line on cursor should exist.");
             let text = String::from(line.text.to_owned());
-            let spaces = get_prefix_spaces(&text);
+            let mut indent_to = get_prefix_spaces(&text);
+            if let Some(arrow_index) = text.find("--> ") {
+                indent_to = indent_to.max(arrow_index + 4);
+            }
+            if let Some(_) = text.find("-->") {
+                indent_to = indent_to.max(2);
+            }
             editor.content.perform(Action::Edit(Edit::Enter));
-            for _ in 0..spaces {
+
+            for _ in 0..indent_to{
                 editor.content.perform(Action::Edit(Edit::Insert(' ')))
             };
 
