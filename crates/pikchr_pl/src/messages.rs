@@ -45,6 +45,7 @@ pub enum Message {
     SaveFileSelected(Option<PathBuf>),
     SaveFinished,
     SaveRequested,
+    SaveAsRequested,
     ShowError(ApplicationError),
     ToggleDebugOverlay,
     Undo,

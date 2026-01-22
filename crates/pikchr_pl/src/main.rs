@@ -232,6 +232,13 @@ impl Editor {
                 Task::none()
             },
             SaveRequested => {
+                if self.current_file.is_none() {
+                    Task::done(SaveAsRequested)
+                } else {
+                    Task::done(SaveFileSelected(self.current_file.clone()))
+                }
+            },
+            SaveAsRequested => {
                 let mode = self.operating_mode;
                 let current_file_opt = self
                     .current_file
@@ -415,7 +422,12 @@ impl Editor {
             pick_list(op_modes, Some(self.operating_mode), Message::RadioSelected);
 
         let button_new = button("New").on_press(Message::NewRequested);
-        let button_save = button("Save").on_press(Message::SaveRequested);
+
+        let button_save = if self.modifiers.command() {
+                button("Save As").on_press(Message::SaveAsRequested)
+            } else {
+                button("Save").on_press(Message::SaveRequested)
+            };
         let button_load = button("Load").on_press(Message::LoadRequested);
 
         let toggle_debug = iced::widget::toggler(self.show_debug)

@@ -60,28 +60,36 @@ pub fn handle_action(keypress: KeyPress) -> Option<Binding<Message>> {
 }
 
 fn global_binding(keypress: impl key_ext::KeypressLike) -> Option<Message> {
-    if keypress.modifiers().command() && keypress.modifiers().shift() {
-        key_dispatch!(keypress.key(), {
-            named: {},
-            literals: {
-                "z" => Message::Redo,
-            }
-        })
-    } else if keypress.modifiers().command() {
-        key_dispatch!(keypress.key(), {
-            named: {},
-            literals: {
-                "z" => Message::Undo,
-            }
-        })
-    } else {
-        key_dispatch!(keypress.key(), {
-            named: {
-                F2 => Message::ToggleDebugOverlay
-            },
-            literals: {}
-        })
+    let mods = &keypress.modifiers();
+
+    match (mods.shift(), mods.command()) {
+        (true, true) =>
+            key_dispatch!(keypress.key(), {
+                named: {},
+                literals: {
+                    "z" => Message::Redo,
+                    "s" => Message::SaveAsRequested,
+                }
+            }),
+        (false, true) =>
+            key_dispatch!(keypress.key(), {
+                named: {},
+                literals: {
+                    "z" => Message::Undo,
+                    "s" => Message::SaveRequested
+                }
+            }),
+        (false, false) =>
+            key_dispatch!(keypress.key(), {
+                named: {
+                    F2 => Message::ToggleDebugOverlay
+                },
+                literals: {}
+            }),
+        _ => None
     }
+    // No need to wrap into default keybind, because global_binds are on subscription
+
 }
 
 pub fn listen() -> iced::Subscription<Message> {
