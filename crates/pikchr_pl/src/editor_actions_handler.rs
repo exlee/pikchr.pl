@@ -61,6 +61,9 @@ pub fn handle(editor: &mut Editor, msg: EditorAction) -> Task<Message> {
             if let Some(_) = text.find("-->") {
                 indent_to = indent_to.max(2);
             }
+            if cursor.position.column == 0 {
+                indent_to = 0
+            }
             editor.content.perform(Action::Edit(Edit::Enter));
 
             for _ in 0..indent_to{
