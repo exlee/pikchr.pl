@@ -18,7 +18,7 @@ use iced::{
     widget::{
         button, column, container, pane_grid, pick_list, row, space, stack, svg, text::Shaping,
         text_editor::Content,
-    },
+    }, window::icon,
 };
 use pikchr_pro::{
     pikchr::{self, PikchrCode},
@@ -44,12 +44,19 @@ const PROLOG_INIT: &str = include_str!("../native/prolog/init.pl");
 const DEBOUNCE_MS: u64 = 100;
 
 pub fn main() -> iced::Result {
+    let window_settings = iced::window::Settings {
+        icon: Some(load_icon()),
+        ..Default::default()
+    };
+    dbg!(&window_settings);
     PrologEngine::init(Some(String::from(PROLOG_INIT)));
     iced::application(Editor::new, Editor::update, Editor::view)
         .title(Editor::set_title)
         .font(SPACE_MONO_BYTES)
         .subscription(Editor::subscriptions)
+        .window(window_settings)
         .run()
+
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -532,6 +539,13 @@ fn inject_svg_style(input: String) -> String {
         input.insert_str(idx + 1, &style);
     }
     input
+}
+
+const ICON: &[u8;15574] = include_bytes!("../../../assets/icon_1024.png");
+fn load_icon() -> iced::window::Icon {
+    icon::from_file_data(
+        ICON, Some(image::ImageFormat::Png)
+    ).expect("Can't load app icon")
 }
 
 trait AsyncFileDialogExt {
