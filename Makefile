@@ -21,6 +21,6 @@ add-license:
 	@addlicense -c "Przemysław Alexander Kamiński (vel xlii vel exlee)" \
 	  -f NOTICE \
 	  -l gpl-3.0-only $(FLAGS) \
-	  -ignore '**/*.pl' -ignore 'assets/*' -ignore ".github/" -s $(GIT_FILES)
+	  -ignore '**/*.pl' -ignore 'assets/*' -ignore ".github/**/*" -ignore "**/*.toml" -s $(GIT_FILES)
 
 

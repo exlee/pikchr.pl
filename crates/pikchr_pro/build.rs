@@ -10,7 +10,7 @@
 //
 // You should have received a copy of the GNU General Public License along
 // with pikchr.pl. If not, see <https://www.gnu.org/licenses/>.
-//
+
 use std::{env, fs, path::PathBuf};
 use wasmtime::{Config, Engine};
 
