@@ -102,6 +102,7 @@ impl From<String> for PikchrCode {
 pub fn render_pikchr(input: PikchrCode) -> Result<SvgString, RenderError> {
     let result = render(input.0.as_str(), None, 0).map_err(RenderError::PikchrError)?;
     Ok(SvgString::from(result))
+
 }
 pub fn render(text: &str, class_name: Option<&str>, flags: i32) -> Result<PikchrResult, String> {
     let c_text = CString::new(text).map_err(|e| e.to_string())?;

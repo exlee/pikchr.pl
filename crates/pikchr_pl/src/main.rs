@@ -221,7 +221,7 @@ impl Editor {
                     match std::fs::write(path_buf, self.content.text()) {
                         Ok(_) => (),
                         Err(_) => {
-                            ShowError(ApplicationError::SaveFailure);
+                                return Task::done(ShowError(ApplicationError::SaveFailure))
                         },
                     };
                 }
@@ -355,10 +355,9 @@ impl Editor {
             iced::time::every(Duration::from_millis(500)).map(|_| Message::RefreshTick),
             keybindings::listen(),
         ];
-        match (self.file_watch_mode, &self.current_file) {
-            (true, Some(file)) => subscriptions.push(file_watcher::file_watcher(file)),
-            _ => (),
-        }
+        if let (true, Some(file)) = (self.file_watch_mode, &self.current_file) {
+            subscriptions.push(file_watcher::file_watcher(file))
+        } 
         iced::Subscription::batch(subscriptions)
     }
 

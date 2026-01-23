@@ -1,20 +1,21 @@
-use std::path::{Path, PathBuf};
+use std::path::{Path};
 
 use iced::{
     Subscription,
     stream as iced_stream,
     futures::channel::mpsc::Sender,
-    futures::stream::{self, BoxStream, StreamExt},
-    futures::{SinkExt, Stream},
+    futures::stream::{ BoxStream, StreamExt},
+    futures::{SinkExt },
 };
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 
 use crate::messages::Message;
 
-pub fn file_watcher(path: &PathBuf) -> Subscription<Message> {
+pub fn file_watcher(path: &Path) -> Subscription<Message> {
     let s = path.to_string_lossy().into_owned();
     Subscription::run_with(s, watch_stream)
 }
+#[allow(clippy::ptr_arg)]
 fn watch_stream(path: &String) -> BoxStream<'static, Message> {
     let owned_path = path.clone();
     Box::pin(iced_stream::channel(

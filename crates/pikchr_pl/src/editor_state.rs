@@ -11,7 +11,7 @@
 // You should have received a copy of the GNU General Public License along
 // with pikchr.pl. If not, see <https://www.gnu.org/licenses/>.
 
-use std::{collections::HashMap, path::PathBuf};
+use std::path::PathBuf;
 
 use iced::{
     keyboard::Modifiers,
@@ -20,7 +20,7 @@ use iced::{
 use pikchr_pro::types::PikchrCode;
 use tokio::sync::watch;
 
-use crate::{OperatingMode, PaneContent, constants, prolog_modules, undo::UndoStack};
+use crate::{OperatingMode, PaneContent, prolog_modules, undo::UndoStack};
 
 pub const INITIAL_CONTENT: &str = r#"diagram -->
   box("Hello").
@@ -28,22 +28,22 @@ pub const INITIAL_CONTENT: &str = r#"diagram -->
 
 pub struct Editor {
     pub modules: prolog_modules::PrologModules,
-    pub pikchr_input_tx:        watch::Sender<PikchrCode>,
-    pub pikchr_input_rx:        watch::Receiver<PikchrCode>,
-    pub prolog_input_tx:        watch::Sender<String>,
-    pub prolog_input_rx:        watch::Receiver<String>,
-    pub content:         text_editor::Content,
-    pub svg_handle:      Option<svg::Handle>,
-    pub is_compiling:    bool,
+    pub pikchr_input_tx: watch::Sender<PikchrCode>,
+    pub pikchr_input_rx: watch::Receiver<PikchrCode>,
+    pub prolog_input_tx: watch::Sender<String>,
+    pub prolog_input_rx: watch::Receiver<String>,
+    pub content: text_editor::Content,
+    pub svg_handle: Option<svg::Handle>,
+    pub is_compiling: bool,
     pub last_successful: bool,
-    pub operating_mode:  OperatingMode,
-    pub modifiers:       Modifiers,
-    pub last_error:      Buffered<String>,
-    pub current_file:    Option<PathBuf>,
-    pub show_debug:      bool,
-    pub pikchr_code:     Option<PikchrCode>,
-    pub dirty:           bool,
-    pub undo_stack:      UndoStack,
+    pub operating_mode: OperatingMode,
+    pub modifiers: Modifiers,
+    pub last_error: Buffered<String>,
+    pub current_file: Option<PathBuf>,
+    pub show_debug: bool,
+    pub pikchr_code: Option<PikchrCode>,
+    pub dirty: bool,
+    pub undo_stack: UndoStack,
     pub panes: pane_grid::State<PaneContent>,
     pub file_watch_mode: bool,
 }
@@ -55,11 +55,7 @@ impl Default for Editor {
         let content = text_editor::Content::with_text(INITIAL_CONTENT);
 
         let (mut pane_state, main_pane) = pane_grid::State::new(PaneContent::Editor);
-        pane_state.split(
-            pane_grid::Axis::Vertical,
-            main_pane,
-            PaneContent::Preview
-        );
+        pane_state.split(pane_grid::Axis::Vertical, main_pane, PaneContent::Preview);
 
         Self {
             modules: prolog_modules::PrologModules::new(),
@@ -80,21 +76,20 @@ impl Default for Editor {
             pikchr_code: None,
             file_watch_mode: false,
             content,
-            panes: pane_state
+            panes: pane_state,
         }
     }
 }
 
-
 pub struct Buffered<T: Clone> {
     current: T,
-    cached:  T,
+    cached: T,
 }
 
 impl<T: Clone> Buffered<T> {
     pub fn new(init: T) -> Self {
         Self {
-            cached:  init.clone(),
+            cached: init.clone(),
             current: init,
         }
     }

@@ -9,6 +9,9 @@ test-watch:
 test-quiet-watch:
 	fd -e rs -e pl | entr -r -c make test-quiet
 
+build-watch:
+	fd -e rs -e pl | entr -r -c cargo build
+
 snapshot:
 	$(if $(MSG),,$(error MSG not set))
 	cd crates/pikchr-pro && jj file list ./ | tar cvf - -T - | tar xvf - -C ../../../pikchr-pro
@@ -18,6 +21,6 @@ add-license:
 	@addlicense -c "Przemysław Alexander Kamiński (vel xlii vel exlee)" \
 	  -f NOTICE \
 	  -l gpl-3.0-only $(FLAGS) \
-	  -ignore '**/*.pl' -s $(GIT_FILES)
+	  -ignore '**/*.pl' -ignore 'assets/*' -ignore ".github/" -s $(GIT_FILES)
 
 

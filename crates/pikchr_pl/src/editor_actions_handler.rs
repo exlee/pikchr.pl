@@ -21,7 +21,7 @@ pub fn handle(editor: &mut Editor, msg: EditorAction) -> Task<Message> {
                 .content
                 .line(cursor.position.line)
                 .expect("Line on cursor should exist.");
-            let text = String::from(line.text.to_owned());
+            let text = String::from(line.text);
             let removals = min(INDENT_SPACES, get_prefix_spaces(&text));
 
             editor.content.perform(Action::Move(Motion::Home));
@@ -53,12 +53,12 @@ pub fn handle(editor: &mut Editor, msg: EditorAction) -> Task<Message> {
                 .content
                 .line(cursor.position.line)
                 .expect("Line on cursor should exist.");
-            let text = String::from(line.text.to_owned());
+            let text = String::from(line.text);
             let mut indent_to = get_prefix_spaces(&text);
             if let Some(arrow_index) = text.find("--> ") {
                 indent_to = indent_to.max(arrow_index + 4);
             }
-            if let Some(_) = text.find("-->") {
+            if text.contains("-->") {
                 indent_to = indent_to.max(2);
             }
             if cursor.position.column == 0 {
@@ -76,7 +76,7 @@ pub fn handle(editor: &mut Editor, msg: EditorAction) -> Task<Message> {
     }
 }
 
-fn get_prefix_spaces(text: &String) -> usize {
+fn get_prefix_spaces(text: &str) -> usize {
     let mut spaces = 0;
     for c in text.chars() {
         if !c.is_whitespace() {

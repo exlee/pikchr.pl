@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 use crate::constants;
 
@@ -20,10 +20,9 @@ impl PrologModules {
     }
     pub fn to_merged_string(&self) -> String {
         self.available_modules
-
             .iter()
             .filter(|(k, _)| self.enabled_modules.contains(k))
-            .map(|(_,v)| v)
+            .map(|(_, v)| v)
             .copied()
             .collect::<Vec<_>>()
             .join("\n\n")
