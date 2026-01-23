@@ -106,12 +106,17 @@ group(Label, Expr) --> { atom(Label) }, label(Label), ": ", squared(Expr), nl.
 group(Label, Expr) --> { string(Label), string_upper(Label, Up) }, Up, ": ", squared(Expr), nl.
 group(label(Label), Expr) --> label(Label), ": ", squared(Expr), nl.
 
+group_start(Label) --> label(Label), ": [".
+group_end --> "]", nl.
+
+
 expr(V) --> V, nl.
 
 lines(A,B,C) --> quoted(A), space, quoted(B), space, quoted(C).
 lines(A,B) --> quoted(A), space, quoted(B).
 lines(A) --> quoted(A).
 
+label(label(L)) --> label(L).
 label(I) -->  {
    ( atomic(I)
    -> format(string(S), "~w", [I])
@@ -159,7 +164,8 @@ text_above(L, T) --> "move to ", L, ".nw;", "text ", quoted(T), " center above ;
 text_inside(L, T) --> "text ", quoted(T), "center with .center at ", L, ".center".
 
 text_inner(At, Text) --> "dot invis;", "text ", asq(Text), "below  at ", label(At), ".n", ";move to last dot;", nl.
-text_outer(At, Text) --> "text ", asq(Text), "above  at ", label(At), ".n + (0,0.05)", nl.
+text_outer(At, Text) --> "text ", asq(Text), "above  at ", label(At), ".n + (0,0.05)", nl,
+                         "dot at ", label(At), ".s + (0,-0.20) invis", nl.
 
 text_center(At, Text) -->
   "dot invis;",
@@ -188,7 +194,7 @@ exit(L, T) --> socket(L,e,T).
 box(L) --> label(L), ": ", as(box), space, as(rad), " 0.05 ".
 move_to(L, Dir) --> "move to ", label(L), ".", as(Dir), nl. 
 pipe(L, A, Entry, Exit) --> box(L), " height 80%", " width 80%",
-               semicolon, place_text:text_outer(L, A),
+               semicolon, txt:text_outer(L, A),
                entry(L, Entry),
                exit(L, Exit),
                move_to(L, e).
@@ -216,8 +222,24 @@ tests :-
     nl.
 
 
-%diagram --> shapes:pipe("A","B","C","D").
 
+:- module(containers).
+offset_sign(nw, "-", "").
+offset_sign(se, "", "-").
+offset_sign(sw, "-", "-").
+offset_sign(ne, "", "").
+offset(Dir, OfX, OfY) --> { offset_sign(Dir, X, Y) }, format_("(~s~2f, ~s~2f)", [X,OfX,Y,OfY]).
+%% around(Label, OffsetX, OffsetY, LabelToSurround).
+%%%
+%% surrounds group (or object) specified by label with a line
+around(Label, OfX, OfY, What) -->
+  label(Label), ": ", 
+  "line from ", label(What), ".nw + ", offset(nw,OfX,OfY),
+  "then to ", label(What), ".ne +", offset(ne, OfX, OfY), 
+  "then to ", label(What), ".se +", offset(se, OfX, OfY),
+  "then to ", label(What), ".sw +", offset(sw, OfX, OfY),
+  "then close",
+  nl.
 :- module(runtime).
 run :- phrase(query:diagram, Out), format("~s", [Out]).
 :- module(query).
