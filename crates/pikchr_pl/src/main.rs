@@ -22,7 +22,7 @@ use iced::{
 };
 use pikchr_pro::{
     pikchr::{self, PikchrCode},
-    prolog::{PrologEngineAsync, PrologInit, engine::trealla::EngineAsync as PrologEngine},
+    prolog::{engine::trealla::EngineAsync as PrologEngine},
 };
 use thiserror::Error;
 use tokio::sync::watch;

@@ -13,7 +13,7 @@
 
 use anyhow::Result;
 
-use crate::prolog::{PrologEngine, PrologInit, RenderError, engine};
+use crate::prolog::{RenderError, engine};
 
 pub mod pikchr;
 pub mod prolog;

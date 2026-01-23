@@ -13,8 +13,6 @@
 
 use thiserror::Error;
 
-use crate::types::PikchrCode;
-
 pub mod engine;
 
 pub(crate) static DIAGRAM_INIT: &str = include_str!("../native/prolog/init.pl");
@@ -39,21 +37,3 @@ impl From<anyhow::Error> for RenderError {
     }
 }
 
-macro_rules! future_type {
-    ($T:ty) => {
-			impl std::future::Future<Output = $T> + Send
-    }
-}
-pub trait PrologEngine {
-    fn process_diagram(input: Queries) -> Result<PikchrCode, RenderError>;
-    fn run_prolog(input: Queries) -> Result<String, RenderError>;
-}
-
-pub trait PrologEngineAsync {
-    fn process_diagram(input: Queries) -> future_type!(Result<PikchrCode,RenderError>);
-    fn run_prolog(input: Queries) -> future_type!(Result<String, RenderError>);
-}
-
-pub trait PrologInit {
-    fn init();
-}

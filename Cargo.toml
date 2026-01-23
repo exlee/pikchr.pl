@@ -15,7 +15,7 @@
 members = [
   "crates/pikchr_pl",
   "crates/pikchr_pro"
-]
+, "crates/trealla_wasm"]
 resolver = "3"
 
 [workspace.package]

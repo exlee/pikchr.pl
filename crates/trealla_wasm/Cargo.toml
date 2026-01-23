@@ -1,0 +1,32 @@
+[package]
+name = "trealla-wasm"
+license = "MIT"
+author = "Przemysław Alexander Kamiński"
+description = """
+Trealla Prolog over WASM wrapper library
+allowing simple text->text interface for Prolog.
+"""
+version = "0.1.0"
+keywords = ["prolog", "wasm"]
+categories = ["compilers", "text-processing"]
+repository = "https://github.com/exlee/pikchr.pl"
+
+edition.workspace = true
+
+[features]
+default = ["std", "async"]
+std = ["sync"]
+sync = []
+async = ["dep:tokio"]
+
+[dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, optional = true }
+wasmtime = { workspace = true }
+wasmtime-wasi = { workspace = true }
+
+
+[build-dependencies]
+cc = { workspace = true }
+wasmtime = { workspace = true }

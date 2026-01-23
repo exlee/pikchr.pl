@@ -11,3 +11,7 @@ file_lines(_,[]) --> [].
 file_lines(N,[H|T]) -->
   file_text(N,H), { NN is N + 1 },
   file_lines(NN,T).
+show(File) --> 
+  "down; ",
+  { getfile(File, Lines) },
+  file_lines(1, Lines).
