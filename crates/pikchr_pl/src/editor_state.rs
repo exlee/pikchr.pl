@@ -11,7 +11,7 @@
 // You should have received a copy of the GNU General Public License along
 // with pikchr.pl. If not, see <https://www.gnu.org/licenses/>.
 
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 use iced::{
     keyboard::Modifiers,
@@ -20,13 +20,14 @@ use iced::{
 use pikchr_pro::types::PikchrCode;
 use tokio::sync::watch;
 
-use crate::{OperatingMode, PaneContent, undo::UndoStack};
+use crate::{OperatingMode, PaneContent, constants, prolog_modules, undo::UndoStack};
 
 pub const INITIAL_CONTENT: &str = r#"diagram -->
   box("Hello").
 "#;
 
 pub struct Editor {
+    pub modules: prolog_modules::PrologModules,
     pub pikchr_input_tx:        watch::Sender<PikchrCode>,
     pub pikchr_input_rx:        watch::Receiver<PikchrCode>,
     pub prolog_input_tx:        watch::Sender<String>,
@@ -61,6 +62,7 @@ impl Default for Editor {
         );
 
         Self {
+            modules: prolog_modules::PrologModules::new(),
             undo_stack: UndoStack::new(content.clone()),
             pikchr_input_tx: piktx,
             pikchr_input_rx: pikrx,
@@ -82,6 +84,7 @@ impl Default for Editor {
         }
     }
 }
+
 
 pub struct Buffered<T: Clone> {
     current: T,

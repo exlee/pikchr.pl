@@ -10,7 +10,7 @@ use wasmtime_wasi::{
 
 static TPL_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tpl.bin"));
 use crate::{
-    prolog::{PROLOG_INIT, PrologEngine, PrologEngineAsync, PrologInit, Queries, RenderError},
+    prolog::{DIAGRAM_INIT, PrologEngine, PrologEngineAsync, PrologInit, Queries, RenderError},
     types::PikchrCode,
 };
 
@@ -27,15 +27,10 @@ pub(crate) struct PrologRuntime {
     pub engine: wasmtime::Engine,
     pub module: Module,
     pub linker: Linker<LinkerState>,
-    pub init_data: Option<String>,
 }
 
-fn build_wasi(input: Queries, init_data: Option<String>) -> Result<WasiCtxWithCtx, RenderError> {
+fn build_wasi(input: Queries) -> Result<WasiCtxWithCtx, RenderError> {
     let mut sb = String::new();
-    if let Some(data) = init_data {
-        writeln!(sb, "{}", data);
-    }
-    //writeln!(sb, "{}", PROLOG_INIT)?;
     for query in input {
         writeln!(sb, "{}", query)?;
     }
@@ -48,7 +43,7 @@ fn build_wasi(input: Queries, init_data: Option<String>) -> Result<WasiCtxWithCt
         .stdin(stdin)
         .stdout(stdout.clone())
         .stderr(stdout.clone())
-        .args(&["tpl", "-q", "--consult", "-g", "runtime:run, halt"])
+        .args(&["tpl", "-q", "--consult", "-g", "run, halt"])
         .preopened_dir(".", "/", DirPerms::READ, FilePerms::READ)
         .expect("Can't open current dir as root")
         .env("PWD", "/")
@@ -88,7 +83,7 @@ macro_rules! get_runtime_impl {
 
 
     ) => {
-        fn get_runtime_with_init(init_data: Option<String>) -> &'static PrologRuntime {
+        fn get_runtime() -> &'static PrologRuntime {
             $runtime.get_or_init(|| {
                 let mut config = wasmtime::Config::new();
                 config.async_support($async_support);
@@ -111,7 +106,6 @@ macro_rules! get_runtime_impl {
                     engine,
                     module,
                     linker,
-                    init_data,
                 }
             })
         }
@@ -125,7 +119,10 @@ macro_rules! process_diagram_impl {
         await_: $($await_token:tt)*
     ) => {
             $($async_kw)? fn process_diagram(input: Queries) -> Result<PikchrCode, RenderError> {
-                Self::run_prolog(input)
+                let mut diagram_input = input.clone();
+                diagram_input.insert(0, String::from(DIAGRAM_INIT));
+
+                Self::run_prolog(diagram_input)
                 $($await_token)*
                 .map_err(|e| RenderError::PrologError(format!("{}", e)))
                 .map(PikchrCode::new)
@@ -142,9 +139,9 @@ macro_rules! run_prolog_impl {
         ) => {
                 $($async_kw)? fn run_prolog(input: Queries) -> Result<String, RenderError> {
                     // At this point runtime should be initialized
-                    let runtime = Self::get_runtime_with_init(None);
+                    let runtime = Self::get_runtime();
 
-                    let (wasi, stdout, stderr) = build_wasi(input, runtime.init_data.clone())?;
+                    let (wasi, stdout, stderr) = build_wasi(input)?;
                     let mut store = Store::new(&runtime.engine, LinkerState { wasi });
 
                     let instance = runtime
@@ -182,8 +179,8 @@ impl Engine {
     );
 }
 impl PrologInit for Engine {
-    fn init(init_data: Option<String>) {
-        Self::get_runtime_with_init(init_data);
+    fn init() {
+        Self::get_runtime();
     }
 }
 impl PrologEngine for Engine {
@@ -206,8 +203,8 @@ impl EngineAsync {
     );
 }
 impl PrologInit for EngineAsync {
-    fn init(init_data: Option<String>) {
-        Self::get_runtime_with_init(init_data);
+    fn init() {
+        Self::get_runtime();
     }
 }
 impl PrologEngineAsync for EngineAsync {

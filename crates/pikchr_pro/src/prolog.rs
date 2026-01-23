@@ -17,7 +17,7 @@ use crate::types::PikchrCode;
 
 pub mod engine;
 
-pub(crate) static PROLOG_INIT: &str = include_str!("../native/prolog/init.pl");
+pub(crate) static DIAGRAM_INIT: &str = include_str!("../native/prolog/init.pl");
 
 type Queries = Vec<String>;
 
@@ -55,5 +55,5 @@ pub trait PrologEngineAsync {
 }
 
 pub trait PrologInit {
-    fn init(init_data: Option<String>);
+    fn init();
 }

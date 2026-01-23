@@ -34,13 +34,14 @@ mod keybindings;
 mod messages;
 mod string_ext;
 mod undo;
+mod constants;
+mod prolog_modules;
 
 use editor_state::Editor;
 use messages::Message;
 
-use crate::{string_ext::StringExt, undo::UndoStack};
+use crate::{prolog_modules::PrologModules, string_ext::StringExt, undo::UndoStack};
 
-const PROLOG_INIT: &str = include_str!("../native/prolog/init.pl");
 const DEBOUNCE_MS: u64 = 100;
 
 pub fn main() -> iced::Result {
@@ -49,7 +50,7 @@ pub fn main() -> iced::Result {
         ..Default::default()
     };
     dbg!(&window_settings);
-    PrologEngine::init(Some(String::from(PROLOG_INIT)));
+    PrologEngine::init();
     iced::application(Editor::new, Editor::update, Editor::view)
         .title(Editor::set_title)
         .font(SPACE_MONO_BYTES)
@@ -210,8 +211,9 @@ impl Editor {
             RunProlog(input) => {
                 let input_rx = self.prolog_input_rx.clone();
                 let _ = self.prolog_input_tx.send(input);
+                let modules = self.modules.clone();
 
-                Task::perform(render_diagram(self.last_successful, input_rx), Message::PrologFinished)
+                Task::perform(render_diagram(self.last_successful, input_rx, modules), Message::PrologFinished)
             },
             SaveFileSelected(path_buf_opt) => {
                 self.current_file = path_buf_opt.clone();
@@ -489,7 +491,7 @@ pub enum ApplicationError {
     Unknown,
 }
 
-async fn render_diagram(last_successful: bool, mut input_rx: watch::Receiver<String>) -> Option<Result<PikchrCode, ApplicationError>> {
+async fn render_diagram(last_successful: bool, mut input_rx: watch::Receiver<String>, prolog_modules: PrologModules) -> Option<Result<PikchrCode, ApplicationError>> {
     let input = input_rx.borrow_and_update().clone();
     if last_successful {
         tokio::time::sleep(std::time::Duration::from_millis(DEBOUNCE_MS)).await;
@@ -497,7 +499,7 @@ async fn render_diagram(last_successful: bool, mut input_rx: watch::Receiver<Str
     if input_rx.has_changed().unwrap_or(false) {
         return None;
     }
-    let result = PrologEngine::process_diagram(vec![input])
+    let result = PrologEngine::process_diagram(vec![input,prolog_modules.to_merged_string()])
         .await
         .map_err(|s| s.into());
 
