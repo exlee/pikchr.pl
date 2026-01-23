@@ -54,7 +54,10 @@ jobs:
           if ! command -v cargo-zigbuild &> /dev/null; then
             cargo install cargo-zigbuild
           fi
-
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
       - name: Compile
         run: |
           cargo zigbuild --target ${{ matrix.target }} --release
