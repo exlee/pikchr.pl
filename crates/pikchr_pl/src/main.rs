@@ -41,6 +41,7 @@ use messages::Message;
 use crate::{string_ext::StringExt, undo::UndoStack};
 
 const PROLOG_INIT: &str = include_str!("../native/prolog/init.pl");
+const DEBOUNCE_MS: u64 = 100;
 
 pub fn main() -> iced::Result {
     PrologEngine::init(Some(String::from(PROLOG_INIT)));
@@ -95,7 +96,7 @@ impl Editor {
             LoadFileSelected(Some(path_buf)) => {
                 self.current_file = Some(path_buf);
                 let path_ref: &PathBuf = self.current_file.as_ref().unwrap();
-                
+
                 if let Ok(file_as_string) = std::fs::read_to_string(path_ref) {
                     self.content = Content::with_text(&file_as_string);
                     self.undo_stack = UndoStack::new(self.content.clone());
@@ -127,30 +128,23 @@ impl Editor {
                 Task::none()
             },
             NewRequested => self.reset_editor(),
-            Edit(action) => {
+            Edit(action @ iced::widget::text_editor::Action::Edit(_)) => {
                 self.undo_stack.push(&self.content);
                 self.dirty = true;
                 self.content.perform(action);
-                Task::done(Message::RunLogic)
+                Task::done(RunLogic)
             },
-            PerformAction(action) => {
+            Edit(action) => {
                 self.content.perform(action);
-                self.dirty = true;
                 Task::none()
             },
-            PerformActions(run_actions, actions) => {
-                for action in actions {
-                    self.content.perform(action);
-                }
-                if run_actions {
-                    self.undo_stack.push(&self.content);
-                    self.dirty = true;
-                    let _ = self.input_tx.send(self.content.text().into());
-                    Task::done(Message::RunLogic)
-                } else {
-                    Task::none()
-                }
-            },
+            EditBatch(actions) => Task::batch(
+                actions
+                    .into_iter()
+                    .map(Message::Edit)
+                    .map(Task::done)
+                    .collect::<Vec<_>>(),
+            ),
             PikchrFinished(result) => {
                 self.is_compiling = false;
                 match result {
@@ -172,14 +166,15 @@ impl Editor {
             },
             PrologFinished(result) => {
                 match result {
-                    Ok(input) => {
+                    Some(Ok(input)) => {
                         self.pikchr_code = Some(input.clone());
                         Task::batch(vec![
                             //Task::done(Message::ShowPikchr(input.clone())),
                             Task::done(Message::RunPikchr(input)),
                         ])
                     },
-                    Err(err) => Task::done(Message::ShowError(err)),
+                    Some(Err(err)) => Task::done(Message::ShowError(err)),
+                    None => Task::none(),
                 }
             },
             RadioSelected(operating_mode) => {
@@ -198,14 +193,19 @@ impl Editor {
                 }
             },
             RunPikchr(input) => {
-                let input_rx = self.input_rx.clone();
-                let _ = self.input_tx.send(input);
+                let input_rx = self.pikchr_input_rx.clone();
+                let _ = self.pikchr_input_tx.send(input);
                 Task::perform(
                     render_pikchr(self.last_successful, input_rx),
                     Message::PikchrFinished,
                 )
             },
-            RunProlog(input) => Task::perform(render_diagram(input), Message::PrologFinished),
+            RunProlog(input) => {
+                let input_rx = self.prolog_input_rx.clone();
+                let _ = self.prolog_input_tx.send(input);
+
+                Task::perform(render_diagram(self.last_successful, input_rx), Message::PrologFinished)
+            },
             SaveFileSelected(path_buf_opt) => {
                 self.current_file = path_buf_opt.clone();
                 if let Some(path_buf) = path_buf_opt {
@@ -482,10 +482,19 @@ pub enum ApplicationError {
     Unknown,
 }
 
-async fn render_diagram(input: String) -> Result<PikchrCode, ApplicationError> {
-    PrologEngine::process_diagram(vec![input])
+async fn render_diagram(last_successful: bool, mut input_rx: watch::Receiver<String>) -> Option<Result<PikchrCode, ApplicationError>> {
+    let input = input_rx.borrow_and_update().clone();
+    if last_successful {
+        tokio::time::sleep(std::time::Duration::from_millis(DEBOUNCE_MS)).await;
+    }
+    if input_rx.has_changed().unwrap_or(false) {
+        return None;
+    }
+    let result = PrologEngine::process_diagram(vec![input])
         .await
-        .map_err(|s| s.into())
+        .map_err(|s| s.into());
+
+    Some(result)
 }
 
 async fn render_pikchr(
@@ -494,7 +503,7 @@ async fn render_pikchr(
 ) -> Option<Result<String, ApplicationError>> {
     let input = input_rx.borrow_and_update().clone();
     if last_successful {
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(DEBOUNCE_MS)).await;
     }
 
     if input_rx.has_changed().unwrap_or(false) {

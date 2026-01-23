@@ -63,33 +63,29 @@ fn global_binding(keypress: impl key_ext::KeypressLike) -> Option<Message> {
     let mods = &keypress.modifiers();
 
     match (mods.shift(), mods.command()) {
-        (true, true) =>
-            key_dispatch!(keypress.key(), {
-                named: {},
-                literals: {
-                    "z" => Message::Redo,
-                    "s" => Message::SaveAsRequested,
-                }
-            }),
-        (false, true) =>
-            key_dispatch!(keypress.key(), {
-                named: {},
-                literals: {
-                    "z" => Message::Undo,
-                    "s" => Message::SaveRequested
-                }
-            }),
-        (false, false) =>
-            key_dispatch!(keypress.key(), {
-                named: {
-                    F2 => Message::ToggleDebugOverlay
-                },
-                literals: {}
-            }),
-        _ => None
+        (true, true) => key_dispatch!(keypress.key(), {
+            named: {},
+            literals: {
+                "z" => Message::Redo,
+                "s" => Message::SaveAsRequested,
+            }
+        }),
+        (false, true) => key_dispatch!(keypress.key(), {
+            named: {},
+            literals: {
+                "z" => Message::Undo,
+                "s" => Message::SaveRequested
+            }
+        }),
+        (false, false) => key_dispatch!(keypress.key(), {
+            named: {
+                F2 => Message::ToggleDebugOverlay
+            },
+            literals: {}
+        }),
+        _ => None,
     }
     // No need to wrap into default keybind, because global_binds are on subscription
-
 }
 
 pub fn listen() -> iced::Subscription<Message> {
@@ -144,52 +140,48 @@ fn map_emacs_alt_binding(key: Key) -> Option<Message> {
             Backspace => delete_word()
         },
         literals: {
-            "f" => Message::PerformAction(Action::Move(Motion::WordRight)),
-            "b" => Message::PerformAction(Action::Move(Motion::WordLeft)),
+            "f" => Message::Edit(Action::Move(Motion::WordRight)),
+            "b" => Message::Edit(Action::Move(Motion::WordLeft)),
         }
     })
 }
 
 fn delete_word() -> Message {
-    Message::PerformActions(
-        true,
-        vec![
-            Action::Move(Motion::WordLeft),
-            Action::Select(Motion::WordRight),
-            Action::Edit(Edit::Delete),
-        ],
-    )
+    Message::EditBatch(vec![
+        Action::Move(Motion::WordLeft),
+        Action::Select(Motion::WordRight),
+        Action::Edit(Edit::Delete),
+    ])
 }
 
 fn select_word_left() -> Message {
-    Message::PerformAction(Action::Select(Motion::WordLeft))
+    Message::Edit(Action::Select(Motion::WordLeft))
 }
 fn select_word_right() -> Message {
-    Message::PerformAction(Action::Select(Motion::WordRight))
+    Message::Edit(Action::Select(Motion::WordRight))
 }
 fn map_emacs_binding(key: Key) -> Option<Message> {
     key_dispatch!(key.clone(), {
         named: {
-            Backspace => Message::PerformActions(
-                true,
+            Backspace => Message::EditBatch(
                 vec![Action::SelectLine, Action::Edit(Edit::Delete)],
             )
         },
         literals: {
-            "n" => Message::PerformAction(Action::Move(Motion::Down)),
-            "p" => Message::PerformAction(Action::Move(Motion::Up)),
-            "f" => Message::PerformAction(Action::Move(Motion::Right)),
-            "b" => Message::PerformAction(Action::Move(Motion::Left)),
-            "a" => Message::PerformAction(Action::Move(Motion::Home)),
-            "e" => Message::PerformAction(Action::Move(Motion::End)),
-            "o" => Message::PerformActions(true,
+            "n" => Message::Edit(Action::Move(Motion::Down)),
+            "p" => Message::Edit(Action::Move(Motion::Up)),
+            "f" => Message::Edit(Action::Move(Motion::Right)),
+            "b" => Message::Edit(Action::Move(Motion::Left)),
+            "a" => Message::Edit(Action::Move(Motion::Home)),
+            "e" => Message::Edit(Action::Move(Motion::End)),
+            "o" => Message::EditBatch(
                 vec![
                     Action::Move(Motion::Home),
                     Action::Edit(Edit::Insert('\n')),
                     Action::Move(Motion::Left),
                 ],
             ),
-            "k" => Message::PerformActions( true,
+            "k" => Message::EditBatch(
                 vec![Action::Select(Motion::End), Action::Edit(Edit::Delete)],
             ),
         }

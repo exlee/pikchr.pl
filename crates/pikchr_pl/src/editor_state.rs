@@ -27,8 +27,10 @@ pub const INITIAL_CONTENT: &str = r#"diagram -->
 "#;
 
 pub struct Editor {
-    pub input_tx:        watch::Sender<PikchrCode>,
-    pub input_rx:        watch::Receiver<PikchrCode>,
+    pub pikchr_input_tx:        watch::Sender<PikchrCode>,
+    pub pikchr_input_rx:        watch::Receiver<PikchrCode>,
+    pub prolog_input_tx:        watch::Sender<String>,
+    pub prolog_input_rx:        watch::Receiver<String>,
     pub content:         text_editor::Content,
     pub svg_handle:      Option<svg::Handle>,
     pub is_compiling:    bool,
@@ -47,7 +49,8 @@ pub struct Editor {
 
 impl Default for Editor {
     fn default() -> Self {
-        let (tx, rx) = watch::channel(PikchrCode::new(""));
+        let (piktx, pikrx) = watch::channel(PikchrCode::new(""));
+        let (prtx, prrx) = watch::channel(String::new());
         let content = text_editor::Content::with_text(INITIAL_CONTENT);
 
         let (mut pane_state, main_pane) = pane_grid::State::new(PaneContent::Editor);
@@ -59,8 +62,10 @@ impl Default for Editor {
 
         Self {
             undo_stack: UndoStack::new(content.clone()),
-            input_tx: tx,
-            input_rx: rx,
+            pikchr_input_tx: piktx,
+            pikchr_input_rx: pikrx,
+            prolog_input_tx: prtx,
+            prolog_input_rx: prrx,
             svg_handle: None,
             is_compiling: false,
             last_successful: false,

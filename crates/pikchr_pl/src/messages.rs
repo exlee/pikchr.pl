@@ -29,14 +29,13 @@ pub enum EditorAction {
 pub enum Message {
     /// Destructive event coming from editor
     Edit(text_editor::Action),
+    EditBatch(Vec<text_editor::Action>),
     LoadFileSelected(Option<PathBuf>),
     LoadRequested,
     ModifiersChanged(Modifiers),
     NewRequested,
-    PerformAction(text_editor::Action),
-    PerformActions(bool, Vec<text_editor::Action>),
     PikchrFinished(Option<Result<String, ApplicationError>>),
-    PrologFinished(Result<PikchrCode, ApplicationError>),
+    PrologFinished(Option<Result<PikchrCode, ApplicationError>>),
     RadioSelected(OperatingMode),
     RefreshTick,
     RunLogic,
