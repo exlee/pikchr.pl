@@ -39,7 +39,7 @@ macro_rules! key_dispatch {
 }
 
 pub fn handle_action(keypress: KeyPress) -> Option<Binding<Message>> {
-    if global_binding(keypress.clone()).is_some() {
+    if global_binding(&keypress).is_some() {
         return None;
     }
 
@@ -59,7 +59,7 @@ pub fn handle_action(keypress: KeyPress) -> Option<Binding<Message>> {
     }
 }
 
-fn global_binding(keypress: impl key_ext::KeypressLike) -> Option<Message> {
+fn global_binding(keypress: &impl key_ext::KeypressLike) -> Option<Message> {
     let mods = &keypress.modifiers();
 
     match (mods.shift(), mods.command()) {
@@ -102,7 +102,7 @@ pub fn listen() -> iced::Subscription<Message> {
                     // TODO: Remember which key - needed for alt checks
                     //if key == Key::Named(keyboard::key::Named::Alt) {}
                     //if key == Key::Named(keyboard::key::Named::AltGraph) {}
-                    global_binding(keyboard_event)
+                    global_binding(&keyboard_event)
                 },
                 _ => None,
             }
@@ -161,7 +161,7 @@ fn select_word_right() -> Message {
     Message::Edit(Action::Select(Motion::WordRight))
 }
 fn map_emacs_binding(key: Key) -> Option<Message> {
-    key_dispatch!(key.clone(), {
+    key_dispatch!(key, {
         named: {
             Backspace => Message::EditBatch(
                 vec![Action::SelectLine, Action::Edit(Edit::Delete)],

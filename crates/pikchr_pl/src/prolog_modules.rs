@@ -17,8 +17,8 @@ use crate::constants;
 
 #[derive(Clone, Debug)]
 pub struct PrologModules {
-    available_modules: BTreeMap<&'static str, &'static str>,
-    enabled_modules: Vec<&'static str>,
+    pub available_modules: BTreeMap<&'static str, &'static str>,
+    pub enabled_modules: Vec<&'static str>,
 }
 
 impl PrologModules {
@@ -39,5 +39,26 @@ impl PrologModules {
             .copied()
             .collect::<Vec<_>>()
             .join("\n\n")
+    }
+    pub fn disable(&mut self, module: &str) -> &Self {
+        let new_enabled: Vec<&str> = self
+            .enabled_modules
+            .iter()
+            .cloned()
+            .filter(|i| *i != module)
+            .collect();
+        self.enabled_modules = new_enabled;
+        self
+    }
+
+    #[allow(unused)]
+    pub fn enable(&mut self, module: &str) -> &Self {
+        if let Some((&static_key, _)) = self.available_modules.get_key_value(module) {
+            if self.enabled_modules.contains(&static_key) {
+                return self;
+            }
+            self.enabled_modules.push(static_key);
+        }
+        self
     }
 }

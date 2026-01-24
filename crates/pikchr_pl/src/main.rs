@@ -18,24 +18,25 @@ use iced::{
     widget::{
         button, column, container, pane_grid, pick_list, row, space, stack, svg, text::Shaping,
         text_editor::Content,
-    }, window::icon,
+    },
+    window::icon,
 };
 use pikchr_pro::{
     pikchr::{self, PikchrCode},
-    prolog::{engine::trealla::EngineAsync as PrologEngine},
+    prolog::engine::trealla::EngineAsync as PrologEngine,
 };
 use thiserror::Error;
 use tokio::sync::watch;
 
+mod constants;
 mod editor_actions_handler;
 mod editor_state;
 mod file_watcher;
 mod keybindings;
 mod messages;
+mod prolog_modules;
 mod string_ext;
 mod undo;
-mod constants;
-mod prolog_modules;
 
 use editor_state::Editor;
 use messages::Message;
@@ -57,7 +58,6 @@ pub fn main() -> iced::Result {
         .subscription(Editor::subscriptions)
         .window(window_settings)
         .run()
-
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -172,18 +172,13 @@ impl Editor {
                     },
                 }
             },
-            PrologFinished(result) => {
-                match result {
-                    Some(Ok(input)) => {
-                        self.pikchr_code = Some(input.clone());
-                        Task::batch(vec![
-                            //Task::done(Message::ShowPikchr(input.clone())),
-                            Task::done(Message::RunPikchr(input)),
-                        ])
-                    },
-                    Some(Err(err)) => Task::done(Message::ShowError(err)),
-                    None => Task::none(),
-                }
+            PrologFinished(result) => match result {
+                Some(Ok(input)) => {
+                    self.pikchr_code = Some(input.clone());
+                    Task::done(Message::RunPikchr(input))
+                },
+                Some(Err(err)) => Task::done(Message::ShowError(err)),
+                None => Task::none(),
             },
             RadioSelected(operating_mode) => {
                 self.operating_mode = operating_mode;
@@ -213,16 +208,17 @@ impl Editor {
                 let _ = self.prolog_input_tx.send(input);
                 let modules = self.modules.clone();
 
-                Task::perform(render_diagram(self.last_successful, input_rx, modules), Message::PrologFinished)
+                Task::perform(
+                    render_diagram(self.last_successful, input_rx, modules),
+                    Message::PrologFinished,
+                )
             },
             SaveFileSelected(path_buf_opt) => {
                 self.current_file = path_buf_opt.clone();
                 if let Some(path_buf) = path_buf_opt {
                     match std::fs::write(path_buf, self.content.text()) {
                         Ok(_) => (),
-                        Err(_) => {
-                                return Task::done(ShowError(ApplicationError::SaveFailure))
-                        },
+                        Err(_) => return Task::done(ShowError(ApplicationError::SaveFailure)),
                     };
                 }
                 Task::done(Message::SaveFinished)
@@ -357,7 +353,7 @@ impl Editor {
         ];
         if let (true, Some(file)) = (self.file_watch_mode, &self.current_file) {
             subscriptions.push(file_watcher::file_watcher(file))
-        } 
+        }
         iced::Subscription::batch(subscriptions)
     }
 
@@ -490,7 +486,11 @@ pub enum ApplicationError {
     Unknown,
 }
 
-async fn render_diagram(last_successful: bool, mut input_rx: watch::Receiver<String>, prolog_modules: PrologModules) -> Option<Result<PikchrCode, ApplicationError>> {
+async fn render_diagram(
+    last_successful: bool,
+    mut input_rx: watch::Receiver<String>,
+    prolog_modules: PrologModules,
+) -> Option<Result<PikchrCode, ApplicationError>> {
     let input = input_rx.borrow_and_update().clone();
     if last_successful {
         tokio::time::sleep(std::time::Duration::from_millis(DEBOUNCE_MS)).await;
@@ -498,7 +498,7 @@ async fn render_diagram(last_successful: bool, mut input_rx: watch::Receiver<Str
     if input_rx.has_changed().unwrap_or(false) {
         return None;
     }
-    let result = PrologEngine::process_diagram(vec![input,prolog_modules.to_merged_string()])
+    let result = PrologEngine::process_diagram(vec![input, prolog_modules.to_merged_string()])
         .await
         .map_err(|s| s.into());
 
@@ -542,11 +542,9 @@ fn inject_svg_style(input: String) -> String {
     input
 }
 
-const ICON: &[u8;15574] = include_bytes!("../../../assets/icon_1024.png");
+const ICON: &[u8; 15574] = include_bytes!("../../../assets/icon_1024.png");
 fn load_icon() -> iced::window::Icon {
-    icon::from_file_data(
-        ICON, Some(image::ImageFormat::Png)
-    ).expect("Can't load app icon")
+    icon::from_file_data(ICON, Some(image::ImageFormat::Png)).expect("Can't load app icon")
 }
 
 trait AsyncFileDialogExt {

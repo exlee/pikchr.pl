@@ -56,9 +56,10 @@ impl Default for Editor {
 
         let (mut pane_state, main_pane) = pane_grid::State::new(PaneContent::Editor);
         pane_state.split(pane_grid::Axis::Vertical, main_pane, PaneContent::Preview);
-
+        let mut modules = prolog_modules::PrologModules::new();
+        modules.disable("testing");
         Self {
-            modules: prolog_modules::PrologModules::new(),
+            modules,
             undo_stack: UndoStack::new(content.clone()),
             pikchr_input_tx: piktx,
             pikchr_input_rx: pikrx,
