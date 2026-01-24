@@ -33,3 +33,7 @@ thiserror = "2.0.18"
 rfd = "0.17.2"
 image = "0.25.9"
 notify = "8.2.0"
+serde = { version = "1.0.228", features = ["derive"] }
+directories = "6.0.0"
+postcard = "1.1.3"
+

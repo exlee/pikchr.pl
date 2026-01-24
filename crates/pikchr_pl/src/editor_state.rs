@@ -18,6 +18,7 @@ use iced::{
     widget::{pane_grid, svg, text_editor},
 };
 use pikchr_pro::types::PikchrCode;
+use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 
 use crate::{OperatingMode, PaneContent, prolog_modules, undo::UndoStack};
@@ -46,6 +47,14 @@ pub struct Editor {
     pub undo_stack: UndoStack,
     pub panes: pane_grid::State<PaneContent>,
     pub file_watch_mode: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct EditorSaveState {
+    pub current_file: Option<PathBuf>,
+    pub file_watch_mode: bool,
+    pub show_debug: bool,
+    pub operating_mode: OperatingMode,
 }
 
 impl Default for Editor {

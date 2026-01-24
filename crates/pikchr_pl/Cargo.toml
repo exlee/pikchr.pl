@@ -25,6 +25,9 @@ thiserror = { workspace = true }
 rfd = { workspace = true }
 image =  { workspace = true }
 notify = { workspace = true }
+serde = { workspace = true }
+directories = { workspace = true }
+postcard = { workspace = true }
 
 [build-dependencies]
 cc = { workspace = true }

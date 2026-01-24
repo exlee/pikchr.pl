@@ -25,6 +25,7 @@ use pikchr_pro::{
     pikchr::{self, PikchrCode},
     prolog::engine::trealla::EngineAsync as PrologEngine,
 };
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::sync::watch;
 
@@ -36,12 +37,13 @@ mod keybindings;
 mod messages;
 mod prolog_modules;
 mod string_ext;
+mod save_state;
 mod undo;
 
 use editor_state::Editor;
 use messages::Message;
 
-use crate::{prolog_modules::PrologModules, string_ext::StringExt, undo::UndoStack};
+use crate::{prolog_modules::PrologModules, save_state::Stateful, string_ext::StringExt, undo::UndoStack};
 
 const DEBOUNCE_MS: u64 = 100;
 
@@ -50,7 +52,6 @@ pub fn main() -> iced::Result {
         icon: Some(load_icon()),
         ..Default::default()
     };
-    dbg!(&window_settings);
     PrologEngine::init();
     iced::application(Editor::new, Editor::update, Editor::view)
         .title(Editor::set_title)
@@ -60,7 +61,7 @@ pub fn main() -> iced::Result {
         .run()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 enum OperatingMode {
     PikchrMode,
     PrologMode,
@@ -82,7 +83,15 @@ impl Display for OperatingMode {
 
 impl Editor {
     fn new() -> (Self, Task<Message>) {
-        (Editor::default(), Task::done(Message::RunLogic))
+        let mut editor = Editor::default();
+        let load_result = editor.state_load();
+        if load_result.is_ok() && editor.current_file.is_some() {
+            let current_file = editor.current_file.clone();
+            (editor, Task::done(Message::LoadFileSelected(current_file)))
+        } else {
+            (editor, Task::done(Message::RunLogic))
+        }
+
     }
     fn set_title(&self) -> String {
         let file: String = self
@@ -109,7 +118,10 @@ impl Editor {
                     self.content = Content::with_text(&file_as_string);
                     self.undo_stack = UndoStack::new(self.content.clone());
                     self.dirty = false;
-                    Task::done(Message::RunLogic)
+                    Task::batch([
+                        Task::done(SaveTick),
+                        Task::done(Message::RunLogic),
+                    ])
                 } else {
                     Task::done(Message::ShowError(ApplicationError::FileLoadFailure(
                         path_ref.clone(),
@@ -188,6 +200,13 @@ impl Editor {
                 self.last_error.commit();
                 Task::none()
             },
+            SaveTick => {
+                let save_data = self.to_save_state();
+                Task::perform(
+                    async { Editor::save_write(save_data); },
+                    Message::Nothing
+                )
+            }
             RunLogic => {
                 let input = self.content.text();
                 match self.operating_mode {
@@ -304,6 +323,7 @@ impl Editor {
             },
             EditorAction(msg) => editor_actions_handler::handle(self, msg),
             LoadedFileChanged => Task::done(Message::LoadFileSelected(self.current_file.clone())),
+            Nothing(_) => Task::none(),
         }
     }
     fn view(&self) -> Element<'_, Message> {
@@ -349,6 +369,7 @@ impl Editor {
     fn subscriptions(&self) -> iced::Subscription<Message> {
         let mut subscriptions = vec![
             iced::time::every(Duration::from_millis(500)).map(|_| Message::RefreshTick),
+            iced::time::every(Duration::from_secs(5)).map(|_| Message::SaveTick),
             keybindings::listen(),
         ];
         if let (true, Some(file)) = (self.file_watch_mode, &self.current_file) {
@@ -435,7 +456,7 @@ impl Editor {
 
         let button_new = button("New").on_press(Message::NewRequested);
 
-        let button_save = if self.modifiers.command() {
+        let button_save = if self.modifiers.command() && self.modifiers.shift() {
             button("Save As").on_press(Message::SaveAsRequested)
         } else {
             button("Save").on_press(Message::SaveRequested)

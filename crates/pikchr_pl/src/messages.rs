@@ -46,11 +46,13 @@ pub enum Message {
     SaveRequested,
     SaveAsRequested,
     ShowError(ApplicationError),
+    SaveTick,
     ToggleDebugOverlay,
     Undo,
     Redo,
     ToggleFileWatch,
     PaneResized(pane_grid::ResizeEvent),
     EditorAction(EditorAction),
-    LoadedFileChanged
+    LoadedFileChanged,
+    Nothing(()),
 }
