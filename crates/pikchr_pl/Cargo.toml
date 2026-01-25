@@ -18,9 +18,9 @@ edition.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
-iced = { workspace = true }
+iced = { workspace = true, features = ["highlighter"] }
 tokio = { workspace = true }
-pikchr_pro = { path = "../pikchr_pro", features = ["async"] }
+pikchr_pro = { path = "../pikchr_pro" }
 thiserror = { workspace = true }
 rfd = { workspace = true }
 image =  { workspace = true }

@@ -39,12 +39,13 @@ mod prolog_modules;
 mod string_ext;
 mod save_state;
 mod heredoc_parser;
+mod text_highlighting;
 mod undo;
 
 use editor_state::Editor;
 use messages::Message;
 
-use crate::{prolog_modules::PrologModules, save_state::Stateful, string_ext::StringExt, heredoc_parser::transform_heredoc, undo::UndoStack};
+use crate::{prolog_modules::PrologModules, save_state::Stateful, string_ext::StringExt, heredoc_parser::transform_heredoc, undo::UndoStack, text_highlighting::PrologHighlighter};
 
 const DEBOUNCE_MS: u64 = 100;
 
@@ -330,7 +331,7 @@ impl Editor {
     fn view(&self) -> Element<'_, Message> {
         let panes = pane_grid(&self.panes, |_pane, content, _is_focused| {
             let content_widget = match content {
-                PaneContent::Editor => self.input_pane(),
+                PaneContent::Editor => self.input_pane(self.operating_mode),
                 PaneContent::Preview => self.preview_pane(),
             };
             pane_grid::Content::new(content_widget)
@@ -339,7 +340,6 @@ impl Editor {
         .spacing(10)
         .width(Length::Fill)
         .height(Length::Fill);
-
         let info_box = container(
             iced::widget::text(self.last_error.get())
                 .font(iced::font::Font::MONOSPACE)
@@ -379,14 +379,23 @@ impl Editor {
         iced::Subscription::batch(subscriptions)
     }
 
-    fn input_pane(&self) -> Element<'_, Message> {
-        iced::widget::text_editor(&self.content)
+    fn input_pane(&self, mode: OperatingMode) -> Element<'_, Message> {
+        let editor = iced::widget::text_editor(&self.content)
             .on_action(Message::Edit)
             .key_binding(keybindings::handle_action)
             .height(Length::Fill)
             .size(12)
-            .font(iced::font::Font::MONOSPACE)
-            .into()
+            .font(iced::font::Font::MONOSPACE);
+
+				if mode == OperatingMode::PrologMode {
+    				editor
+        				.highlight_with::<PrologHighlighter>((), PrologHighlighter::colorize)
+        				.into()
+				} else {
+    				editor.into()
+				}
+
+
     }
     fn preview_pane(&self) -> Element<'_, Message> {
         if let Some(handle) = &self.svg_handle {
