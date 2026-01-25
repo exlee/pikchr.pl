@@ -38,12 +38,13 @@ mod messages;
 mod prolog_modules;
 mod string_ext;
 mod save_state;
+mod heredoc_parser;
 mod undo;
 
 use editor_state::Editor;
 use messages::Message;
 
-use crate::{prolog_modules::PrologModules, save_state::Stateful, string_ext::StringExt, undo::UndoStack};
+use crate::{prolog_modules::PrologModules, save_state::Stateful, string_ext::StringExt, heredoc_parser::transform_heredoc, undo::UndoStack};
 
 const DEBOUNCE_MS: u64 = 100;
 
@@ -513,6 +514,7 @@ async fn render_diagram(
     prolog_modules: PrologModules,
 ) -> Option<Result<PikchrCode, ApplicationError>> {
     let input = input_rx.borrow_and_update().clone();
+    let input = transform_heredoc(&input);
     if last_successful {
         tokio::time::sleep(std::time::Duration::from_millis(DEBOUNCE_MS)).await;
     }
