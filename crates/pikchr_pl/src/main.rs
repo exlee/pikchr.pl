@@ -87,12 +87,17 @@ impl Editor {
     fn new() -> (Self, Task<Message>) {
         let mut editor = Editor::default();
         let load_result = editor.state_load();
+        let mut messages: Vec<Task<Message>> = Vec::new();
         if load_result.is_ok() && editor.current_file.is_some() {
             let current_file = editor.current_file.clone();
-            (editor, Task::done(Message::LoadFileSelected(current_file)))
+            messages.push(Task::done(Message::LoadFileSelected(current_file)))
         } else {
-            (editor, Task::done(Message::RunLogic))
+            messages.push(Task::done(Message::RunLogic));
         }
+        messages.push(
+            iced::widget::operation::focus("editor")
+        );
+        (editor, Task::batch(messages))
 
     }
     fn set_title(&self) -> String {
@@ -106,8 +111,11 @@ impl Editor {
     }
     fn reset_editor(&mut self) -> Task<Message> {
         *self = Self::default();
-        self.content = Content::with_text(&NEW_CONTENT);
-        Task::done(Message::RunLogic)
+        self.content = Content::with_text(NEW_CONTENT);
+        Task::batch([
+            iced::widget::operation::focus("editor"),
+            Task::done(Message::RunLogic)
+        ])
     }
     fn update(&mut self, message: Message) -> Task<Message> {
         use Message::*;
@@ -383,6 +391,7 @@ impl Editor {
     fn input_pane(&self, mode: OperatingMode) -> Element<'_, Message> {
         let editor = iced::widget::text_editor(&self.content)
             .on_action(Message::Edit)
+            .id("editor")
             .key_binding(keybindings::handle_action)
             .height(Length::Fill)
             .size(12)
