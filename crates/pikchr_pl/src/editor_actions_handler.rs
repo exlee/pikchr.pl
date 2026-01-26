@@ -74,8 +74,16 @@ pub fn handle(editor: &mut Editor, msg: EditorAction) -> Task<Message> {
             if text.contains("-->") {
                 indent_to = indent_to.max(2);
             }
+            // Don't ident if we try to insert line above
             if cursor.position.column == 0 {
                 indent_to = 0
+            }
+            // If we're looking at the dot - don't indent.
+            {
+                let col = cursor.position.column;
+                if col > 0 && matches!(text.get(col-1..col), Some(".")) {
+                    indent_to = 0
+                }
             }
             editor.content.perform(Action::Edit(Edit::Enter));
 
