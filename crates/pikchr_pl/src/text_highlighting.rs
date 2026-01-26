@@ -62,7 +62,7 @@ impl PrologHighlighter {
                 font: Some(Font::MONOSPACE),
             },
             Token::Dot => Format {
-                color: Some(palette.warning),
+                color: Some(palette.primary),
                 font: Some(Font::MONOSPACE),
             },
             Token::Operator => Format {
