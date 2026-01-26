@@ -45,7 +45,7 @@ mod undo;
 use editor_state::Editor;
 use messages::Message;
 
-use crate::{prolog_modules::PrologModules, save_state::Stateful, string_ext::StringExt, heredoc_parser::transform_heredoc, undo::UndoStack, text_highlighting::PrologHighlighter};
+use crate::{editor_state::NEW_CONTENT, heredoc_parser::transform_heredoc, prolog_modules::PrologModules, save_state::Stateful, string_ext::StringExt, text_highlighting::PrologHighlighter, undo::UndoStack};
 
 const DEBOUNCE_MS: u64 = 100;
 
@@ -106,6 +106,7 @@ impl Editor {
     }
     fn reset_editor(&mut self) -> Task<Message> {
         *self = Self::default();
+        self.content = Content::with_text(&NEW_CONTENT);
         Task::done(Message::RunLogic)
     }
     fn update(&mut self, message: Message) -> Task<Message> {

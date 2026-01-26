@@ -24,8 +24,26 @@ use tokio::sync::watch;
 use crate::{OperatingMode, PaneContent, prolog_modules, undo::UndoStack};
 
 pub const INITIAL_CONTENT: &str = r#"diagram -->
-  box("Hello").
+  down,
+  box("Hello"),
+  move,
+  ===
+  circle "World" fill yellow
+  move 25%
+  diamond "!" fit color green
+  ===.
+
+down --> "down;".
+box(N) --> as(box), quoted(N), nl.
+move --> "move 25%;".
 "#;
+
+pub const NEW_CONTENT: &str = r#"diagram -->
+    ===
+    box
+    ===.
+"#;
+
 
 pub struct Editor {
     pub modules: prolog_modules::PrologModules,
