@@ -74,7 +74,8 @@ fn global_binding(keypress: &impl key_ext::KeypressLike) -> Option<Message> {
             named: {},
             literals: {
                 "z" => Message::Undo,
-                "s" => Message::SaveRequested
+                "s" => Message::SaveRequested,
+                "n" => Message::NewRequested
             }
         }),
         (false, false) => key_dispatch!(keypress.key(), {
