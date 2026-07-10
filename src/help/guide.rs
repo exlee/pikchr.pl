@@ -90,6 +90,17 @@ fn common_editor_help(ui: &mut egui::Ui) {
         "$$NAME$$",
         "Includes generated source from another named diagram editor when both editors use the same Output Type.",
     );
+    feature(
+        ui,
+        "X = NAME",
+        "At the start of Svgbob source inserted by $$EDIT$$, maps the one-character marker X to another named editor. Its generated source is overlaid at each X, column by column, without inserting newlines into the surrounding canvas.",
+    );
+    ui.label("Example — EDIT node:");
+    ui.label(egui::RichText::new("9 = 3320\nAAA  9\nAAA\nAAA").monospace());
+    ui.label("3320 node:");
+    ui.label(egui::RichText::new("ZZ\nZZ").monospace());
+    ui.label("Result:");
+    ui.label(egui::RichText::new("AAA  ZZ\nAAA  ZZ\nAAA").monospace());
     ui.label("References can be nested up to three replacement passes.");
 }
 

@@ -410,6 +410,13 @@ fn has_generated_dependency(content: &str, name: &str) -> bool {
     content.contains(&format!("$${name}$$"))
 }
 
+fn has_svgbob_overlay_dependency(content: &str, name: &str) -> bool {
+    content
+        .lines()
+        .map_while(svgbob_overlay_declaration)
+        .any(|(_, editor_name)| editor_name == name)
+}
+
 fn clean_old_deps(state: &mut AppState) {
     let span = tracing::info_span!("clean_old_deps", deps_cleaned = tracing::field::Empty);
     let _enter = span.enter();
@@ -447,7 +454,9 @@ fn clean_old_deps(state: &mut AppState) {
                 .zip(state.windows.get(&id).and_then(|w| w.as_render_toggle()))
                 .is_some_and(|(source, target)| {
                     source.output_type() == target.output_type()
-                        && has_generated_dependency(&generated_content, &dname)
+                        && (has_generated_dependency(&generated_content, &dname)
+                            || (target.output_type() == OutputType::Svgbob
+                                && has_svgbob_overlay_dependency(&generated_content, &dname)))
                 });
             let dep_count = usize::from(raw_dependency) + usize::from(generated_dependency);
             if dep_count == 0 {
@@ -501,13 +510,106 @@ fn replace_content(state: &mut AppState, id: egui::Id, content: &str) -> Result<
     let content = replace_generated_content(state, id, content, output_type)?;
     Ok(replace_raw_content(state, id, &content))
 }
+
+fn svgbob_overlay_declaration(line: &str) -> Option<(char, &str)> {
+    let (marker, name) = line.split_once(" = ")?;
+    let mut marker_chars = marker.chars();
+    let marker = marker_chars.next()?;
+    if marker_chars.next().is_some() || name.is_empty() || name.trim() != name {
+        return None;
+    }
+    Some((marker, name))
+}
+
+fn overlay_svgbob_at_marker(content: &mut Vec<Vec<char>>, marker: char, value: &str) {
+    let positions: Vec<(usize, usize)> = content
+        .iter()
+        .enumerate()
+        .flat_map(|(row, line)| {
+            line.iter()
+                .enumerate()
+                .filter_map(move |(column, character)| {
+                    (*character == marker).then_some((row, column))
+                })
+        })
+        .collect();
+    let value: Vec<Vec<char>> = value
+        .split('\n')
+        .map(|line| line.chars().collect())
+        .collect();
+
+    for (row, column) in positions {
+        content[row][column] = ' ';
+        for (row_offset, value_line) in value.iter().enumerate() {
+            let target_row = row + row_offset;
+            if target_row == content.len() {
+                content.push(Vec::new());
+            }
+            if content[target_row].len() < column + value_line.len() {
+                content[target_row].resize(column + value_line.len(), ' ');
+            }
+            for (column_offset, character) in value_line.iter().enumerate() {
+                content[target_row][column + column_offset] = *character;
+            }
+        }
+    }
+}
+
+fn replace_svgbob_overlays(
+    state: &mut AppState,
+    id: egui::Id,
+    content: &str,
+    editors: &[(egui::Id, String, String, String, OutputType)],
+) -> Result<String, String> {
+    let mut lines = content.split('\n').peekable();
+    let mut declarations = Vec::new();
+    while let Some(line) = lines.peek() {
+        let Some(declaration) = svgbob_overlay_declaration(line) else {
+            break;
+        };
+        declarations.push(declaration);
+        lines.next();
+    }
+    if declarations.is_empty() {
+        return Ok(content.to_owned());
+    }
+
+    let mut overlays = Vec::new();
+    for (marker, name) in declarations {
+        let Some((editor_id, _, _, value, output_type)) = editors
+            .iter()
+            .find(|(_, editor_name, _, _, _)| editor_name == name)
+        else {
+            return Ok(content.to_owned());
+        };
+        if *output_type != OutputType::Svgbob {
+            return Err(format!(
+                "Generated overlay {marker} = {name} uses {} output, but this editor uses Svgbob",
+                output_type.label()
+            ));
+        }
+        overlays.push((marker, *editor_id, value));
+    }
+
+    let mut body: Vec<Vec<char>> = lines.map(|line| line.chars().collect()).collect();
+    for (marker, editor_id, value) in overlays {
+        state.editor_deps.entry(editor_id).or_default().insert(id);
+        overlay_svgbob_at_marker(&mut body, marker, value);
+    }
+    Ok(body
+        .into_iter()
+        .map(|line| line.into_iter().collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n"))
+}
+
 fn replace_generated_content(
     state: &mut AppState,
     id: egui::Id,
     content: &str,
     output_type: OutputType,
 ) -> Result<String, String> {
-    let editors: Vec<(egui::Id, &str, String, String, OutputType)> = state
+    let editors: Vec<(egui::Id, String, String, String, OutputType)> = state
         .windows
         .values()
         .flat_map(|e| e.as_editor_window())
@@ -521,7 +623,7 @@ fn replace_generated_content(
             };
             (
                 *e.id,
-                e.name,
+                e.name.to_owned(),
                 format!("$${}$$", e.name),
                 generated_content,
                 source_output_type,
@@ -552,6 +654,9 @@ fn replace_generated_content(
             };
             content = content.replace(repl, &wrapped_value);
         }
+    }
+    if output_type == OutputType::Svgbob {
+        content = replace_svgbob_overlays(state, id, &content, &editors)?;
     }
     Ok(content)
 }
@@ -704,6 +809,59 @@ mod tests {
         .unwrap_err();
         assert!(error.contains("Svgbob"));
         assert!(error.contains("Pikchr"));
+    }
+
+    #[test]
+    fn svgbob_generated_reference_can_overlay_another_editor_column_wise() {
+        let edit_id = crate::egui::Id::new("edit");
+        let overlay_id = crate::egui::Id::new("overlay");
+        let target_id = crate::egui::Id::new("target");
+        let mut edit = PikchrEditor::new(edit_id, crate::egui::Id::new("edit-svg"));
+        let mut overlay = PikchrEditor::new(overlay_id, crate::egui::Id::new("overlay-svg"));
+        let mut target = PikchrEditor::new(target_id, crate::egui::Id::new("target-svg"));
+
+        edit.set_name("EDIT".into());
+        edit.set_output_type(crate::OutputType::Svgbob);
+        edit.set_raw_content("9 = 3320\nAAA  9\nAAA\nAAA".into());
+        overlay.set_name("3320".into());
+        overlay.set_output_type(crate::OutputType::Svgbob);
+        overlay.set_raw_content("ZZ\nZZ".into());
+        target.set_output_type(crate::OutputType::Svgbob);
+
+        let mut state = AppState::default();
+        state.windows.insert(edit_id, Window::PikchrEditor(edit));
+        state
+            .windows
+            .insert(overlay_id, Window::PikchrEditor(overlay));
+        state
+            .windows
+            .insert(target_id, Window::PikchrEditor(target));
+
+        assert_eq!(
+            crate::replace_generated_content(
+                &mut state,
+                edit_id,
+                "9 = 3320\nAAA  9\nAAA\nAAA",
+                crate::OutputType::Svgbob,
+            )
+            .unwrap(),
+            "AAA  ZZ\nAAA  ZZ\nAAA"
+        );
+        assert_eq!(
+            crate::replace_generated_content(
+                &mut state,
+                target_id,
+                "$$EDIT$$",
+                crate::OutputType::Svgbob,
+            )
+            .unwrap(),
+            "AAA  ZZ\nAAA  ZZ\nAAA"
+        );
+        assert!(state.editor_deps[&edit_id].contains(&target_id));
+        assert!(state.editor_deps[&overlay_id].contains(&target_id));
+
+        crate::clean_old_deps(&mut state);
+        assert!(state.editor_deps[&overlay_id].contains(&edit_id));
     }
 
     #[tokio::test]
