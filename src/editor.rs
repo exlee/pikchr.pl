@@ -326,6 +326,15 @@ pub trait GenericEditor: HandleEnter + IdTrait {
     }
 }
 
+fn should_notify_editor_change(
+    editor_changed: bool,
+    enter_changed: bool,
+    tab_changed: bool,
+    navigation_changed: bool,
+) -> bool {
+    editor_changed || enter_changed || tab_changed || navigation_changed
+}
+
 impl<T> InnerWindow for T
 where
     T: GenericEditor + HasError,
@@ -364,7 +373,12 @@ where
                 })
                 .inner;
 
-            if editor.changed() || tab_changed || navigation_changed {
+            if should_notify_editor_change(
+                editor.changed(),
+                indent_requested,
+                tab_changed,
+                navigation_changed,
+            ) {
                 self.editor_on_changed(tx.clone(), ctx);
             }
         });
@@ -435,5 +449,15 @@ where
                     }
                 });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_notify_editor_change;
+
+    #[test]
+    fn enter_only_change_notifies_editor_update() {
+        assert!(should_notify_editor_change(false, true, false, false));
     }
 }

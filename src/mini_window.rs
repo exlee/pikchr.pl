@@ -277,20 +277,34 @@ pub trait InitializeWatchTx: Send + Sync + Initialize {
     fn initialize(&mut self, event_tx: Sender<Msg>) {
         if !self.is_initialized() {
             self.set_initialized();
-            let (tx, mut rx) = tokio::sync::watch::channel(Self::empty_change_data());
+            let (tx, rx) = tokio::sync::watch::channel(Self::empty_change_data());
             self.set_watch_tx(tx);
 
-            tokio::task::spawn(async move {
-                let duration = tokio::time::Duration::from_millis(100);
-                let mut interval = tokio::time::interval(duration);
-                loop {
-                    interval.tick().await;
-                    if rx.has_changed().unwrap_or_default() {
-                        let data: Self::ChangeData = rx.borrow_and_update().clone();
-                        let _ = event_tx.try_send(Self::watch_change_fn(data));
-                    }
+            tokio::task::spawn(forward_watch_changes(rx, event_tx, Self::watch_change_fn));
+        }
+    }
+}
+
+async fn forward_watch_changes<T>(
+    mut rx: watch::Receiver<T>,
+    event_tx: Sender<Msg>,
+    watch_change_fn: fn(T) -> Msg,
+) where
+    T: Clone + Send + Sync + 'static,
+{
+    let duration = tokio::time::Duration::from_millis(100);
+    let mut interval = tokio::time::interval(duration);
+    loop {
+        interval.tick().await;
+        match rx.has_changed() {
+            Ok(true) => {
+                let data = rx.borrow_and_update().clone();
+                if event_tx.send(watch_change_fn(data)).await.is_err() {
+                    break;
                 }
-            });
+            },
+            Ok(false) => {},
+            Err(_) => break,
         }
     }
 }
@@ -650,4 +664,77 @@ pub struct EditorWindowView<'a> {
     pub editor_type: &'a dyn EditorType,
     pub name: &'a str,
     pub mini_window: &'a dyn MiniWindow,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Default)]
+    struct WatchHarness {
+        initialized: bool,
+    }
+
+    impl Id for WatchHarness {
+        fn get_id(&self) -> egui::Id {
+            egui::Id::new("watch-harness")
+        }
+    }
+
+    impl Initialize for WatchHarness {
+        fn is_initialized(&self) -> bool {
+            self.initialized
+        }
+
+        fn set_initialized(&mut self) {
+            self.initialized = true;
+        }
+    }
+
+    impl InitializeWatchTx for WatchHarness {
+        type ChangeData = usize;
+
+        fn watch_change_fn(data: Self::ChangeData) -> Msg {
+            Msg::UpdateContent(egui::Id::new("watch-harness"), data.to_string())
+        }
+
+        fn set_watch_tx(&mut self, _tx: watch::Sender<Self::ChangeData>) {}
+
+        fn empty_change_data() -> Self::ChangeData {
+            0
+        }
+    }
+
+    #[tokio::test]
+    async fn watched_change_waits_for_message_queue_capacity() {
+        let (event_tx, mut event_rx) = tokio::sync::mpsc::channel(1);
+        event_tx.send(Msg::CheckDependencies).await.unwrap();
+        let (watch_tx, watch_rx) = watch::channel(0);
+        watch_tx.send(7).unwrap();
+
+        let forwarder = tokio::spawn(forward_watch_changes(
+            watch_rx,
+            event_tx,
+            WatchHarness::watch_change_fn,
+        ));
+        tokio::task::yield_now().await;
+
+        assert!(matches!(
+            event_rx.recv().await,
+            Some(Msg::CheckDependencies)
+        ));
+        let forwarded = tokio::time::timeout(tokio::time::Duration::from_secs(1), event_rx.recv())
+            .await
+            .expect("watched update should wait for queue capacity");
+        assert!(matches!(
+            forwarded,
+            Some(Msg::UpdateContent(_, content)) if content == "7"
+        ));
+
+        drop(watch_tx);
+        tokio::time::timeout(tokio::time::Duration::from_secs(1), forwarder)
+            .await
+            .expect("forwarder should stop after watch closes")
+            .unwrap();
+    }
 }

@@ -70,6 +70,17 @@ macro_rules! create_help_window {
     }};
 }
 
+fn install_diagram_texture(
+    state: &Arc<RwLock<AppState>>,
+    id: egui::Id,
+    texture: egui::TextureHandle,
+) -> Option<()> {
+    let mut state = state.write();
+    let window = state.windows.get_mut(&id)?.as_svg_window()?;
+    *window.diagram_texture = Some(texture);
+    Some(())
+}
+
 fn clean_library_path(path: String) -> String {
     path.split('/')
         .map(str::trim)
@@ -381,9 +392,7 @@ async fn handle_event(
             {
                 let texture =
                     ctx.load_texture("pikchr_diagram", image, egui::TextureOptions::LINEAR);
-                let mut state_w = state.try_write()?;
-                let window = state_w.windows.get_mut(&id)?.as_svg_window()?;
-                *window.diagram_texture = Some(texture);
+                install_diagram_texture(&state, id, texture)?;
             }
 
             for dep_id in deps {
@@ -1167,6 +1176,54 @@ mod tests {
                     crate::EditorType::PlainText
                 )
         )
+    }
+
+    #[test]
+    fn texture_install_waits_for_transient_state_contention() {
+        let id = egui::Id::new("svg");
+        let owner_id = egui::Id::new("owner");
+        let state = Arc::new(RwLock::new(AppState::default()));
+        state.write().windows.insert(
+            id,
+            mini_window::Window::SvgWindow(svg::SvgWindow::new(id, owner_id)),
+        );
+        let ctx = egui::Context::default();
+        let texture = ctx.load_texture(
+            "contention-test",
+            egui::ColorImage::new([1, 1], vec![egui::Color32::WHITE]),
+            egui::TextureOptions::LINEAR,
+        );
+
+        let state_guard = state.write();
+        let state_for_thread = state.clone();
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let installer = std::thread::spawn(move || {
+            started_tx.send(()).unwrap();
+            let installed = install_diagram_texture(&state_for_thread, id, texture).is_some();
+            done_tx.send(installed).unwrap();
+        });
+
+        started_rx.recv().unwrap();
+        assert!(
+            done_rx
+                .recv_timeout(std::time::Duration::from_millis(100))
+                .is_err(),
+            "texture installation should wait instead of dropping the redraw"
+        );
+        drop(state_guard);
+
+        assert!(
+            done_rx
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .unwrap()
+        );
+        installer.join().unwrap();
+        assert!(matches!(
+            state.read().windows.get(&id),
+            Some(mini_window::Window::SvgWindow(window))
+                if window.diagram_texture.is_some()
+        ));
     }
 
     #[tokio::test]
