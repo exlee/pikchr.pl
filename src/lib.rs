@@ -28,6 +28,7 @@ mod sender_ext;
 pub mod state;
 mod state_serialize;
 mod svg;
+mod svgbob_editor;
 mod tcl;
 mod tcl_editor;
 pub mod text_highlighting;
@@ -149,6 +150,7 @@ pub enum Msg {
 pub enum EditorType {
     Prolog,
     Pikchr,
+    Svgbob,
     Tcl,
     Mruby,
     PlainText,

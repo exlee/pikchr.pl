@@ -21,6 +21,7 @@ pub enum HelpTopic {
     #[default]
     Overview,
     Pikchr,
+    Svgbob,
     Prolog,
     Tcl,
     Mruby,
@@ -34,6 +35,7 @@ impl HelpTopic {
         match self {
             Self::Overview => "DiagramIDE Help",
             Self::Pikchr => "Pikchr Help",
+            Self::Svgbob => "Svgbob Help",
             Self::Prolog => "Prolog Help",
             Self::Tcl => "Tcl Help",
             Self::Mruby => "Ruby Help",

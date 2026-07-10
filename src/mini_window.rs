@@ -7,7 +7,7 @@ use crate::{
     icons::{AppIcon, CustomIcon, custom_icon, icon_button, selectable_icon_button},
     mruby_editor, pikchr_editor, plain_text_editor, prolog_editor,
     state::DiagramBackground,
-    svg, tcl_editor,
+    svg, svgbob_editor, tcl_editor,
 };
 
 pub trait Visible {
@@ -101,6 +101,9 @@ pub trait RenderToggle: Send + Sync {
         crate::OutputType::Pikchr
     }
     fn set_output_type(&mut self, _output_type: crate::OutputType) {}
+    fn has_output_selector(&self) -> bool {
+        true
+    }
 }
 
 pub trait MiniWindow: Send + Sync + Visible + Id + HasMenu + InnerWindow + RenderToggle {
@@ -160,28 +163,30 @@ pub trait MiniWindow: Send + Sync + Visible + Id + HasMenu + InnerWindow + Rende
 
                             // Render toggle (only on windows that own a renderer).
                             if self.has_renderer() {
-                                let output_type = self.output_type();
-                                ui.menu_button("Output", |ui| {
-                                    for candidate in
-                                        [crate::OutputType::Pikchr, crate::OutputType::Svgbob]
-                                    {
-                                        if ui
-                                            .selectable_label(
-                                                output_type == candidate,
-                                                candidate.label(),
-                                            )
-                                            .clicked()
+                                if self.has_output_selector() {
+                                    let output_type = self.output_type();
+                                    ui.menu_button("Output", |ui| {
+                                        for candidate in
+                                            [crate::OutputType::Pikchr, crate::OutputType::Svgbob]
                                         {
-                                            self.set_output_type(candidate);
-                                            let _ = tx.try_send(Msg::SetOutputType(
-                                                ctx.clone(),
-                                                self.get_id(),
-                                                candidate,
-                                            ));
-                                            ui.close();
+                                            if ui
+                                                .selectable_label(
+                                                    output_type == candidate,
+                                                    candidate.label(),
+                                                )
+                                                .clicked()
+                                            {
+                                                self.set_output_type(candidate);
+                                                let _ = tx.try_send(Msg::SetOutputType(
+                                                    ctx.clone(),
+                                                    self.get_id(),
+                                                    candidate,
+                                                ));
+                                                ui.close();
+                                            }
                                         }
-                                    }
-                                });
+                                    });
+                                }
                                 let render = self.render_enabled();
                                 if selectable_icon_button(ui, AppIcon::Render, render)
                                     .on_hover_text("Render diagram\n(unselect for include-only)")
@@ -378,6 +383,7 @@ macro_rules! impl_generated_content {
 #[serde(tag = "type", content = "fields")]
 pub enum Window {
     PikchrEditor(pikchr_editor::PikchrEditor),
+    SvgbobEditor(svgbob_editor::SvgbobEditor),
     PrologEditor(prolog_editor::PrologEditor),
     TclEditor(tcl_editor::TclEditor),
     MrubyEditor(mruby_editor::MrubyEditor),
@@ -388,6 +394,7 @@ pub enum Window {
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone, Copy)]
 pub enum WindowType {
     PikchrEditor,
+    SvgbobEditor,
     PrologEditor,
     TclEditor,
     MrubyEditor,
@@ -470,6 +477,7 @@ impl Window {
         as_raw_content,
         [
             PikchrEditor,
+            SvgbobEditor,
             PrologEditor,
             TclEditor,
             MrubyEditor,
@@ -479,13 +487,20 @@ impl Window {
     trait_getter!(
         Target,
         as_target,
-        [PikchrEditor, PrologEditor, TclEditor, MrubyEditor],
+        [
+            PikchrEditor,
+            SvgbobEditor,
+            PrologEditor,
+            TclEditor,
+            MrubyEditor
+        ],
     );
     trait_getter!(
         Id,
         as_id,
         [
             PikchrEditor,
+            SvgbobEditor,
             PrologEditor,
             TclEditor,
             MrubyEditor,
@@ -498,6 +513,7 @@ impl Window {
         as_indexable,
         [
             PikchrEditor,
+            SvgbobEditor,
             PrologEditor,
             TclEditor,
             MrubyEditor,
@@ -505,12 +521,17 @@ impl Window {
             SvgWindow
         ]
     );
-    trait_getter!(Initialize, as_initialize, [PikchrEditor, SvgWindow],);
+    trait_getter!(
+        Initialize,
+        as_initialize,
+        [PikchrEditor, SvgbobEditor, SvgWindow],
+    );
     trait_getter!(
         MiniWindow,
         as_mini_window,
         [
             PikchrEditor,
+            SvgbobEditor,
             PrologEditor,
             TclEditor,
             MrubyEditor,
@@ -524,6 +545,7 @@ impl Window {
         as_editor_type,
         [
             PikchrEditor,
+            SvgbobEditor,
             PrologEditor,
             TclEditor,
             MrubyEditor,
@@ -535,6 +557,7 @@ impl Window {
         as_render_toggle,
         [
             PikchrEditor,
+            SvgbobEditor,
             PrologEditor,
             TclEditor,
             MrubyEditor,
@@ -543,7 +566,7 @@ impl Window {
     );
     trait_getter!(
         view EditorWindowView<'_>, as_editor_window, get_editor_window,
-        [PikchrEditor,PrologEditor, TclEditor,MrubyEditor],
+        [PikchrEditor,SvgbobEditor,PrologEditor, TclEditor,MrubyEditor],
     );
     trait_getter!(
         mut_view svg::SvgWindowView<'_>, as_svg_window, get_svg_window_mut,
@@ -551,13 +574,14 @@ impl Window {
     );
     trait_getter!(
         view WindowView<'_>, as_window, get_window,
-        [SvgWindow,PikchrEditor,PrologEditor, TclEditor,MrubyEditor,PlainTextEditor,HelpWindow],
+        [SvgWindow,PikchrEditor,SvgbobEditor,PrologEditor, TclEditor,MrubyEditor,PlainTextEditor,HelpWindow],
     );
     trait_getter!(
         HasError,
         as_error,
         [
             PikchrEditor,
+            SvgbobEditor,
             PrologEditor,
             TclEditor,
             MrubyEditor,
@@ -569,6 +593,7 @@ impl Window {
         as_name,
         [
             PikchrEditor,
+            SvgbobEditor,
             PrologEditor,
             TclEditor,
             MrubyEditor,
@@ -579,7 +604,13 @@ impl Window {
     trait_getter!(
         GeneratedContent,
         as_generated_content,
-        [PikchrEditor, PrologEditor, TclEditor, MrubyEditor],
+        [
+            PikchrEditor,
+            SvgbobEditor,
+            PrologEditor,
+            TclEditor,
+            MrubyEditor
+        ],
     );
 }
 

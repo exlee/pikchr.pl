@@ -293,16 +293,35 @@ pub trait HandleEnter: mini_window::RawContent {
 impl<T> HandleEnter for T where T: Editor + mini_window::RawContent {}
 pub trait Editor {}
 
-pub trait GenericEditor {
+pub trait GenericEditor: HandleEnter + IdTrait {
     fn editor_spec(&mut self, editor_id: Id, ui: &mut Ui) -> TextEditOutput;
     fn handle_enter(&mut self, ctx: &Context, ui: &mut Ui, editor_id: Id);
     fn editor_on_changed(&self, tx: Sender<Msg>, ctx: &Context);
     fn initialize(&mut self, tx: Sender<Msg>);
+
+    /// Override for editor-specific Tab bindings. Diagram source editors keep
+    /// the shared indentation behavior; ASCII-art editors can opt out.
+    fn handle_tab_binding(&mut self, ctx: &Context, ui: &mut Ui, editor_id: Id) -> bool {
+        HandleEnter::handle_tab(self, ctx, ui, editor_id)
+    }
+
+    /// Override for editor-specific command bindings.
+    fn handle_command_bindings(&mut self, ctx: &Context, ui: &mut Ui, tx: &Sender<Msg>) {
+        let editor_id = self.get_id();
+        if ui.memory(|mem| mem.has_focus(editor_id)) {
+            ui.input_mut(|i| {
+                if i.key_pressed(egui::Key::R) && i.modifiers.command {
+                    i.consume_key(egui::Modifiers::COMMAND, egui::Key::R);
+                    let _ = tx.try_send(Msg::RequestRename(ctx.clone(), editor_id));
+                }
+            });
+        }
+    }
 }
 
 impl<T> InnerWindow for T
 where
-    T: GenericEditor + HasError + HandleEnter + IdTrait,
+    T: GenericEditor + HasError,
 {
     fn inner_window(
         &mut self,
@@ -323,20 +342,8 @@ where
                 GenericEditor::handle_enter(self, ctx, ui, editor_id);
             }
 
-            let tab_changed = HandleEnter::handle_tab(self, ctx, ui, editor_id);
-
-            let is_focused = ui.memory(|mem| mem.has_focus(editor_id));
-            if is_focused {
-                ui.input_mut(|i| {
-                    if i.key_pressed(egui::Key::R) && i.modifiers.command {
-                        i.consume_key(egui::Modifiers::COMMAND, egui::Key::R);
-                        let _ = tx.try_send(Msg::RequestRename(ctx.clone(), self.get_id()));
-                        true
-                    } else {
-                        false
-                    }
-                });
-            }
+            let tab_changed = GenericEditor::handle_tab_binding(self, ctx, ui, editor_id);
+            GenericEditor::handle_command_bindings(self, ctx, ui, &tx);
 
             let editor = egui::ScrollArea::both()
                 .auto_shrink([false, false])

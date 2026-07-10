@@ -105,6 +105,16 @@ fn topic_help(ui: &mut egui::Ui, topic: HelpTopic, tx: &Sender<Msg>) {
             ui.add_space(4.0);
             grammar_link(ui, tx);
         },
+        HelpTopic::Svgbob => {
+            common_editor_help(ui);
+            heading(ui, "Svgbob");
+            ui.label(
+                "Write ASCII art directly. Svgbob output is rendered live in the paired Render window.",
+            );
+            ui.label(
+                "This dedicated editor keeps its own bindings: Enter does not carry indentation, and Tab/Cmd-Ctrl-R are available for Svgbob-specific bindings.",
+            );
+        },
         HelpTopic::Prolog => {
             common_editor_help(ui);
             heading(ui, "Prolog");
@@ -193,6 +203,7 @@ pub(super) fn render_guide(ui: &mut egui::Ui, topic: HelpTopic, tx: &Sender<Msg>
 
             heading(ui, "Editor types");
             feature(ui, "Pikchr", "Direct source editor with Pikchr or Svgbob output.");
+            feature(ui, "Svgbob", "Dedicated ASCII-art editor with Svgbob output and independent bindings.");
             feature(ui, "Prolog", "A diagram//0 DCG generates source for the selected output type.");
             feature(
                 ui,

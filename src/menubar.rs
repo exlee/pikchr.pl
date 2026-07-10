@@ -184,6 +184,9 @@ pub fn widget(state: Arc<RwLock<AppState>>, tx: Sender<Msg>) -> impl Fn(&mut Ui)
                 if ui.button("Pikchr").clicked() {
                     let _ = tx.try_send(Msg::NewWindow(ui.ctx().clone(), WindowType::PikchrEditor));
                 };
+                if ui.button("Svgbob").clicked() {
+                    let _ = tx.try_send(Msg::NewWindow(ui.ctx().clone(), WindowType::SvgbobEditor));
+                };
                 if ui.button("Plain text").clicked() {
                     let _ = tx.try_send(Msg::NewWindow(
                         ui.ctx().clone(),

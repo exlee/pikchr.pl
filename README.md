@@ -29,6 +29,8 @@ generated source.
 
 **Source**
 - Direct source editor with **live preview** — choose Pikchr or Svgbob per editor.
+- Dedicated **Svgbob** editor for ASCII art, with isolated bindings for future
+  diagram-specific editing behavior.
 - Plain-text fragments and named editors for reuse.
 
 **Generation** — produce source for the selected output type from a small program when the structure is repetitive:

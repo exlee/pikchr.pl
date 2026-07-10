@@ -21,7 +21,7 @@ use crate::{
     mruby, mruby_editor, pikchr_editor, plain_text_editor, prolog_editor,
     state::{LibraryEntry, Workspace},
     state_serialize::AppStatePersistent,
-    svg, tcl, tcl_editor,
+    svg, svgbob_editor, tcl, tcl_editor,
 };
 
 macro_rules! push_modal {
@@ -38,7 +38,13 @@ macro_rules! create_editor_window {
         let editor_id = identifiers::next_global_id();
         let svg_id = identifiers::next_global_id();
         let editor_insert = mini_window::Window::$wintype($fun(editor_id, svg_id));
-        let svg_insert = mini_window::Window::SvgWindow(svg::SvgWindow::new(svg_id, editor_id));
+        let output_type = editor_insert
+            .as_render_toggle()
+            .map(|render| render.output_type())
+            .unwrap_or_default();
+        let mut svg_window = svg::SvgWindow::new(svg_id, editor_id);
+        svg_window.output_type = output_type;
+        let svg_insert = mini_window::Window::SvgWindow(svg_window);
         let mut state_write = $state.write();
         state_write.windows.insert(editor_id, editor_insert);
         state_write.windows.insert(svg_id, svg_insert);
@@ -88,6 +94,9 @@ fn create_window_from_library_entry(
         crate::EditorType::Pikchr => {
             create_editor_window!(state, PikchrEditor, pikchr_editor::PikchrEditor::new)
         },
+        crate::EditorType::Svgbob => {
+            create_editor_window!(state, SvgbobEditor, svgbob_editor::SvgbobEditor::new)
+        },
         crate::EditorType::Prolog => {
             create_editor_window!(state, PrologEditor, prolog_editor::PrologEditor::new)
         },
@@ -108,11 +117,15 @@ fn create_window_from_library_entry(
     if let Some(render) = window.as_render_toggle_mut() {
         render.set_output_type(entry.output_type);
     }
+    let output_type = window
+        .as_render_toggle()
+        .map(|render| render.output_type())
+        .unwrap_or_default();
     let target_svg = window.as_target().map(|target| target.get_target());
     if let Some(svg_id) = target_svg
         && let Some(mini_window::Window::SvgWindow(svg_window)) = state.windows.get_mut(&svg_id)
     {
-        svg_window.output_type = entry.output_type;
+        svg_window.output_type = output_type;
     }
     state
         .window_library_paths
@@ -311,11 +324,17 @@ async fn handle_event(
                 false
             };
             if changed {
+                let effective_output_type = state_write
+                    .windows
+                    .get(&id)
+                    .and_then(|window| window.as_render_toggle())
+                    .map(|render| render.output_type())
+                    .unwrap_or_default();
                 if let Some(svg_id) = target_svg
                     && let Some(mini_window::Window::SvgWindow(svg_window)) =
                         state_write.windows.get_mut(&svg_id)
                 {
-                    svg_window.output_type = output_type;
+                    svg_window.output_type = effective_output_type;
                 }
                 if let Some(errorable) = state_write
                     .windows
@@ -646,6 +665,11 @@ async fn handle_event(
             crate::mini_window::WindowType::PikchrEditor => {
                 let editor_id =
                     create_editor_window!(state, PikchrEditor, pikchr_editor::PikchrEditor::new);
+                local_queue.push_back(Msg::Refresh(ctx, editor_id));
+            },
+            crate::mini_window::WindowType::SvgbobEditor => {
+                let editor_id =
+                    create_editor_window!(state, SvgbobEditor, svgbob_editor::SvgbobEditor::new);
                 local_queue.push_back(Msg::Refresh(ctx, editor_id));
             },
             crate::mini_window::WindowType::PrologEditor => {
@@ -1079,6 +1103,7 @@ async fn handle_event(
             local_queue.push_back(match et {
                 crate::EditorType::Prolog => Msg::UpdateProlog(ctx, id, content),
                 crate::EditorType::Pikchr => Msg::UpdateRender(ctx, id, content),
+                crate::EditorType::Svgbob => Msg::UpdateRender(ctx, id, content),
                 crate::EditorType::Tcl => Msg::UpdateTcl(ctx, id, content),
                 crate::EditorType::Mruby => Msg::UpdateMruby(ctx, id, content),
                 crate::EditorType::PlainText => Msg::UpdatePlainText(ctx, id),
@@ -1119,6 +1144,9 @@ mod tests {
             (
                 mini_window::Window::PikchrEditor(_),
                 crate::EditorType::Pikchr
+            ) | (
+                mini_window::Window::SvgbobEditor(_),
+                crate::EditorType::Svgbob
             ) | (
                 mini_window::Window::PrologEditor(_),
                 crate::EditorType::Prolog
@@ -1207,6 +1235,36 @@ mod tests {
             local_queue
                 .into_iter()
                 .any(|msg| { matches!(msg, Msg::Refresh(_, id) if id == editor_id) })
+        );
+    }
+
+    #[tokio::test]
+    async fn creating_svgbob_editor_queues_initial_refresh() {
+        let ctx = egui::Context::default();
+        let state = Arc::new(RwLock::new(AppState::default()));
+        let mut local_queue = VecDeque::new();
+
+        handle_event(
+            crate::logger::init_logger(),
+            Msg::NewWindow(ctx, crate::mini_window::WindowType::SvgbobEditor),
+            state.clone(),
+            &mut local_queue,
+        )
+        .await;
+
+        let editor_id = state
+            .read()
+            .windows
+            .iter()
+            .find_map(|(id, window)| {
+                matches!(window, mini_window::Window::SvgbobEditor(_)).then_some(*id)
+            })
+            .expect("svgbob editor should be created");
+
+        assert!(
+            local_queue
+                .iter()
+                .any(|msg| { matches!(msg, Msg::Refresh(_, id) if *id == editor_id) })
         );
     }
 
@@ -1448,13 +1506,17 @@ mod tests {
         let ctx = egui::Context::default();
         for editor_type in [
             crate::EditorType::Pikchr,
+            crate::EditorType::Svgbob,
             crate::EditorType::Prolog,
             crate::EditorType::Tcl,
             crate::EditorType::Mruby,
             crate::EditorType::PlainText,
         ] {
             let state = Arc::new(RwLock::new(AppState::default()));
-            let output_type = if editor_type == crate::EditorType::Pikchr {
+            let output_type = if matches!(
+                editor_type,
+                crate::EditorType::Pikchr | crate::EditorType::Svgbob
+            ) {
                 crate::OutputType::Svgbob
             } else {
                 crate::OutputType::Pikchr
@@ -1498,7 +1560,11 @@ mod tests {
             if editor_type != crate::EditorType::PlainText {
                 assert_eq!(
                     window.as_render_toggle().map(|render| render.output_type()),
-                    Some(output_type)
+                    Some(if editor_type == crate::EditorType::Svgbob {
+                        crate::OutputType::Svgbob
+                    } else {
+                        output_type
+                    })
                 );
             }
             assert!(

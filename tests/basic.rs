@@ -94,3 +94,21 @@ async fn test_new_editor() {
     let _ = harness.try_run_realtime();
     //tokio::task::yield_now().await;
 }
+
+#[tokio::test]
+async fn test_new_svgbob_editor() {
+    let mut harness: Harness = build_harness().await;
+    harness.run_steps(10);
+    harness.get_by_label("New").click_accesskit();
+    harness.run_ok();
+    harness.get_by_label("Svgbob").click_accesskit();
+    poll(&mut harness, |h| {
+        h.query_by_role(Role::MultilineTextInput).is_some()
+    })
+    .await;
+    let editor = harness.get_by_role(Role::MultilineTextInput);
+    editor.focus();
+    editor.type_text("+---+\n| A |\n+---+");
+    harness.step();
+    let _ = harness.try_run_realtime();
+}
