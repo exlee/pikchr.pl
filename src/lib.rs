@@ -94,6 +94,7 @@ pub enum Msg {
     UpdateContent(egui::Id, String),
     UpdateGeneratedContent(egui::Id, String),
     SetOutputType(#[serde(skip)] Context, egui::Id, OutputType),
+    SetSvgbobEditMode(egui::Id, SvgbobEditMode),
     DeleteWindow(egui::Id),
 
     // Windows
@@ -144,6 +145,26 @@ pub enum Msg {
     DuplicateWorkspace(state::WorkspaceId),
     /// Delete a workspace immediately (guarded: never the last one)
     DeleteWorkspaceRequest(state::WorkspaceId),
+}
+
+/// Editing semantics for the dedicated Svgbob canvas editor.
+///
+/// Replace is persisted and selectable now so bindings can target it, but it
+/// intentionally keeps Insert behavior until replacement editing lands.
+#[derive(Default, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize, Clone, Copy)]
+pub enum SvgbobEditMode {
+    #[default]
+    Insert,
+    Replace,
+}
+
+impl SvgbobEditMode {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Insert => "Insert",
+            Self::Replace => "Replace",
+        }
+    }
 }
 
 #[derive(PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize, Clone, Copy)]

@@ -347,6 +347,13 @@ async fn handle_event(
                 local_queue.push_back(Msg::Refresh(ctx, id));
             }
         },
+        Msg::SetSvgbobEditMode(id, mode) => {
+            if let Some(mini_window::Window::SvgbobEditor(editor)) =
+                state.write().windows.get_mut(&id)
+            {
+                editor.set_edit_mode(mode);
+            }
+        },
         Msg::RequestRedraw(ctx, id) => {
             let (svg_string, scale, background, deps) = {
                 let state_r = state.read();
@@ -1266,6 +1273,31 @@ mod tests {
                 .iter()
                 .any(|msg| { matches!(msg, Msg::Refresh(_, id) if *id == editor_id) })
         );
+    }
+
+    #[tokio::test]
+    async fn changing_svgbob_mode_persists_on_the_dedicated_editor() {
+        let editor_id = egui::Id::new("svgbob");
+        let svg_id = egui::Id::new("svg");
+        let state = Arc::new(RwLock::new(AppState::default()));
+        state.write().windows.insert(
+            editor_id,
+            mini_window::Window::SvgbobEditor(svgbob_editor::SvgbobEditor::new(editor_id, svg_id)),
+        );
+
+        handle_event(
+            crate::logger::init_logger(),
+            Msg::SetSvgbobEditMode(editor_id, crate::SvgbobEditMode::Replace),
+            state.clone(),
+            &mut VecDeque::new(),
+        )
+        .await;
+
+        assert!(matches!(
+            state.read().windows.get(&editor_id),
+            Some(mini_window::Window::SvgbobEditor(editor))
+                if editor.edit_mode() == crate::SvgbobEditMode::Replace
+        ));
     }
 
     #[tokio::test]

@@ -305,6 +305,13 @@ pub trait GenericEditor: HandleEnter + IdTrait {
         HandleEnter::handle_tab(self, ctx, ui, editor_id)
     }
 
+    /// Override for editor-specific cursor movement. Source editors keep
+    /// TextEdit's normal text-based arrow behavior; canvas-like editors can
+    /// move through an explicit grid instead.
+    fn handle_navigation_binding(&mut self, _ctx: &Context, _ui: &mut Ui, _editor_id: Id) -> bool {
+        false
+    }
+
     /// Override for editor-specific command bindings.
     fn handle_command_bindings(&mut self, ctx: &Context, ui: &mut Ui, tx: &Sender<Msg>) {
         let editor_id = self.get_id();
@@ -343,6 +350,8 @@ where
             }
 
             let tab_changed = GenericEditor::handle_tab_binding(self, ctx, ui, editor_id);
+            let navigation_changed =
+                GenericEditor::handle_navigation_binding(self, ctx, ui, editor_id);
             GenericEditor::handle_command_bindings(self, ctx, ui, &tx);
 
             let editor = egui::ScrollArea::both()
@@ -355,7 +364,7 @@ where
                 })
                 .inner;
 
-            if editor.changed() || tab_changed {
+            if editor.changed() || tab_changed || navigation_changed {
                 self.editor_on_changed(tx.clone(), ctx);
             }
         });
