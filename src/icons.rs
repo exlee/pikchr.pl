@@ -8,6 +8,7 @@ pub(crate) enum AppIcon {
     Help,
     #[allow(unused)]
     Delete,
+    Rename,
 }
 
 #[derive(Clone, Copy)]
@@ -97,9 +98,10 @@ pub(crate) fn icon_image(icon: AppIcon, tint: egui::Color32) -> egui::Image<'sta
     egui::Image::new(match icon {
         AppIcon::Render => egui::include_image!("../assets/icons/photo.svg"),
         AppIcon::Delete => egui::include_image!("../assets/icons/trash.svg"),
-        AppIcon::Export => egui::include_image!("../assets/icons/square.and.arrow.up.svg"),
-        AppIcon::Save => egui::include_image!("../assets/icons/books.vertical.fill.svg"),
-        AppIcon::Help => egui::include_image!("../assets/icons/questionmark.message.svg"),
+        AppIcon::Export => egui::include_image!("../assets/icons/file-arrow-right.svg"),
+        AppIcon::Save => egui::include_image!("../assets/icons/package-export.svg"),
+        AppIcon::Help => egui::include_image!("../assets/icons/help-circle.svg"),
+        AppIcon::Rename => egui::include_image!("../assets/icons/writing.svg"),
     })
     .fit_to_exact_size(egui::vec2(14.0, 14.0))
     .tint(tint)
@@ -126,6 +128,7 @@ impl AppIcon {
             AppIcon::Save => "Save",
             AppIcon::Help => "Help",
             AppIcon::Delete => "Delete",
+            AppIcon::Rename => "Rename",
         }
     }
 }

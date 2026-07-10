@@ -4,7 +4,7 @@ use tokio::sync::{mpsc::Sender, watch};
 use crate::{
     Msg,
     help::{HelpTopic, HelpWindow},
-    icons::{AppIcon, CustomIcon, custom_icon, icon_button, selectable_icon_button},
+    icons::{AppIcon, icon_button, selectable_icon_button},
     mruby_editor, pikchr_editor, plain_text_editor, prolog_editor,
     state::DiagramBackground,
     svg, svgbob_editor, tcl_editor,
@@ -196,13 +196,9 @@ pub trait MiniWindow: Send + Sync + Visible + Id + HasMenu + InnerWindow + Rende
                                 }
                             }
                             if self.can_save_to_library()
-                                && custom_icon(
-                                    ui,
-                                    CustomIcon::Rename,
-                                    Some(ui.visuals().text_color()),
-                                )
-                                .on_hover_text("Rename")
-                                .clicked()
+                                && icon_button(ui, AppIcon::Rename)
+                                    .on_hover_text("Rename")
+                                    .clicked()
                             {
                                 let _ = tx.try_send(Msg::RequestRename(ctx.clone(), self.get_id()));
                             }
