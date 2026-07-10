@@ -14,6 +14,7 @@ egui_extras = { version = "0.33.3", features = ["svg", "syntect"] }
 catppuccin-egui = { version = "5.7.0", features = ["egui33"], default-features = false }
 image = { workspace = true, features = ["png"] }
 pikchr_pro = { version = "1.0.0", path = "crates/pikchr_pro" }
+svgbob = { git = "https://github.com/exlee/svgbob", rev = "d7cde1104e54949b09209f63217229fbb02c8be3" }
 parking_lot = "0.12.5"
 tokio = { workspace = true, features = ["sync", "macros", "rt"] }
 resvg = "0.45.1"
@@ -83,6 +84,12 @@ notify = "8.2.0"
 serde = { version = "1.0.228", features = ["derive"] }
 directories = "6.0.0"
 postcard = "1.1.3"
+
+[patch.crates-io]
+# Svgbob depends on Sauron 0.61, whose released core crate hard-pins
+# futures 0.3.30. DiagramIDE's Wasmtime requires 0.3.31; this fork changes
+# only that overly strict pin.
+sauron = { git = "https://github.com/exlee/sauron", rev = "f4a59c3fdecc1c7e287fc7ce2d891a5d7b2123e7" }
 
 [profile.dev]
 debug = 0

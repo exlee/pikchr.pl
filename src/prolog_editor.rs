@@ -4,7 +4,7 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     Msg,
     editor::{self, GenericEditor, HandleEnter as _},
-    impl_id, impl_indexable, impl_pikchr_content, impl_render, impl_target, impl_visible,
+    impl_generated_content, impl_id, impl_indexable, impl_render, impl_target, impl_visible,
     mini_window::{self, HasMenu, HasName as _, MiniWindow},
     sender_ext::DebouncedTrySend as _,
     setter_getter_for_trait,
@@ -24,6 +24,8 @@ pub struct PrologEditor {
     /// Whether the render (SVG) window should be shown.
     #[serde(default = "default_render")]
     pub(crate) render: bool,
+    #[serde(default)]
+    pub(crate) output_type: crate::OutputType,
 }
 fn default_render() -> bool {
     true
@@ -40,6 +42,7 @@ impl PrologEditor {
             index: 1,
             error: None,
             render: true,
+            output_type: crate::OutputType::Pikchr,
         }
     }
     fn template_content() -> String {
@@ -55,7 +58,7 @@ impl mini_window::EditorWindow for PrologEditor {
         crate::mini_window::EditorWindowView {
             index: &self.index,
             id: &self.id,
-            content: self as &dyn mini_window::PikchrContent,
+            content: self as &dyn mini_window::GeneratedContent,
             editor_type: self as &dyn mini_window::EditorType,
             mini_window: self as &dyn MiniWindow,
             name: &self.name,
@@ -128,7 +131,7 @@ impl_render!(PrologEditor, render);
 impl_id!(PrologEditor, id);
 impl_indexable!(PrologEditor);
 impl_visible!(PrologEditor, visible);
-impl_pikchr_content!(PrologEditor, pikchr_content);
+impl_generated_content!(PrologEditor, pikchr_content);
 impl_target!(PrologEditor, target_svg);
 setter_getter_for_trait! { (content => String | content.clone() => String) for PrologEditor as raw_content for mini_window::RawContent }
 setter_getter_for_trait! { (error => Option<String> | error.clone() => Option<String>) for PrologEditor as error for mini_window::HasError }

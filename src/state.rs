@@ -36,6 +36,8 @@ pub struct Workspace {
 pub struct LibraryEntry {
     pub path: String,
     pub editor_type: EditorType,
+    #[serde(default)]
+    pub output_type: crate::OutputType,
     pub content: String,
 }
 
@@ -472,6 +474,7 @@ mod tests {
             LibraryEntry {
                 path: "docs/example".into(),
                 editor_type: crate::EditorType::PlainText,
+                output_type: crate::OutputType::Pikchr,
                 content: "hello".into(),
             },
         );
@@ -490,6 +493,21 @@ mod tests {
                 .map(String::as_str),
             Some("docs/example")
         );
+    }
+
+    #[test]
+    fn output_type_defaults_for_legacy_state_and_library_json() {
+        let id = egui::Id::new("legacy-output");
+        let editor = crate::pikchr_editor::PikchrEditor::new(id, egui::Id::new("legacy-svg"));
+        let mut value = serde_json::to_value(editor).unwrap();
+        value.as_object_mut().unwrap().remove("output_type");
+        let restored: crate::pikchr_editor::PikchrEditor = serde_json::from_value(value).unwrap();
+        assert_eq!(restored.output_type, crate::OutputType::Pikchr);
+
+        let entry: LibraryEntry =
+            serde_json::from_str(r#"{"path":"legacy","editor_type":"Pikchr","content":"box"}"#)
+                .unwrap();
+        assert_eq!(entry.output_type, crate::OutputType::Pikchr);
     }
 
     #[test]

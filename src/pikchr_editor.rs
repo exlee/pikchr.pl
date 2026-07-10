@@ -4,8 +4,8 @@ use tokio::sync::{mpsc::Sender, watch};
 use crate::{
     EditorType, Msg,
     editor::{self, Editor, GenericEditor, HandleEnter as _},
-    impl_id, impl_indexable, impl_initialize, impl_initialize_tx, impl_pikchr_content, impl_render,
-    impl_target, impl_visible,
+    impl_generated_content, impl_id, impl_indexable, impl_initialize, impl_initialize_tx,
+    impl_render, impl_target, impl_visible,
     mini_window::{self, EditorWindow, HasMenu, HasName as _, MiniWindow, RawContent},
     setter_getter_for_trait,
     text_highlighting::memoized_syntax_layouter,
@@ -29,6 +29,8 @@ pub struct PikchrEditor {
     /// editors, but no render window is displayed.
     #[serde(default = "default_render")]
     pub(crate) render: bool,
+    #[serde(default)]
+    pub(crate) output_type: crate::OutputType,
 }
 fn default_render() -> bool {
     true
@@ -46,6 +48,7 @@ impl PikchrEditor {
             initialized: false,
             error: None,
             render: true,
+            output_type: crate::OutputType::Pikchr,
         }
     }
 }
@@ -55,7 +58,7 @@ impl EditorWindow for PikchrEditor {
         crate::mini_window::EditorWindowView {
             index: &self.index,
             id: &self.id,
-            content: self as &dyn mini_window::PikchrContent,
+            content: self as &dyn mini_window::GeneratedContent,
             editor_type: self as &dyn mini_window::EditorType,
             mini_window: self as &dyn MiniWindow,
             name: &self.name,
@@ -78,12 +81,16 @@ impl HasMenu for PikchrEditor {
 }
 impl GenericEditor for PikchrEditor {
     fn editor_spec(&mut self, editor_id: egui::Id, ui: &mut Ui) -> TextEditOutput {
+        let syntax = match self.output_type {
+            crate::OutputType::Pikchr => "Pikchr",
+            crate::OutputType::Svgbob => "Plain Text",
+        };
         egui::TextEdit::multiline(&mut self.content)
             .code_editor()
             .desired_width(f32::INFINITY)
             .id(editor_id)
             .layouter(&mut |ui, textbuffer, wrap_width| {
-                memoized_syntax_layouter(editor_id, ui, textbuffer, wrap_width, "Pikchr")
+                memoized_syntax_layouter(editor_id, ui, textbuffer, wrap_width, syntax)
             })
             .show(ui)
     }
@@ -132,10 +139,10 @@ impl_target!(PikchrEditor, target_svg);
 impl_visible!(PikchrEditor, visible);
 impl_initialize!(PikchrEditor, initialized);
 impl_indexable!(PikchrEditor);
-impl_pikchr_content!(PikchrEditor, content);
+impl_generated_content!(PikchrEditor, content);
 impl_initialize_tx!(
     PikchrEditor, watch_tx,
-    on_change: |(ctx,id,content)| Msg::UpdatePikchr(ctx, id, content),
+    on_change: |(ctx,id,content)| Msg::UpdateRender(ctx, id, content),
     data: (Context,egui::Id, String),
     empty: (Context::default(),egui::Id::new(""), String::new())
 );

@@ -13,7 +13,7 @@ use tokio_util::time::{DelayQueue, delay_queue::Key as DelayKey};
 use tracing::Instrument as _;
 
 use crate::{
-    AppState, Msg, SPACE_MONO_NAME, clean_old_deps, identifiers, mini_window,
+    AppState, Msg, clean_old_deps, identifiers, mini_window,
     modal::{
         ConfirmationModal, ExportModal, FileOpenModal, FileSaveModal, RenameModal,
         SaveToLibraryModal, StringEditModal, WorkspaceNameModal,
@@ -104,6 +104,15 @@ fn create_window_from_library_entry(
     let window = state.windows.get_mut(&editor_id)?;
     if let Some(content) = window.as_raw_content_mut() {
         content.set_raw_content(entry.content.clone());
+    }
+    if let Some(render) = window.as_render_toggle_mut() {
+        render.set_output_type(entry.output_type);
+    }
+    let target_svg = window.as_target().map(|target| target.get_target());
+    if let Some(svg_id) = target_svg
+        && let Some(mini_window::Window::SvgWindow(svg_window)) = state.windows.get_mut(&svg_id)
+    {
+        svg_window.output_type = entry.output_type;
     }
     state
         .window_library_paths
@@ -274,25 +283,67 @@ async fn handle_event(
             let mut state = state.write();
             let r = state.windows.get_mut(&id)?;
             if let Some(_c) = r.as_raw_content() {
-                //c.set_pikchr_content(content);
+                // Generated content is updated by the renderer-specific paths.
             };
         },
-        Msg::UpdatePikchrContent(id, content) => {
+        Msg::UpdateGeneratedContent(id, content) => {
             let mut state = state.write();
             let r = state.windows.get_mut(&id)?;
-            if let Some(c) = r.as_pikchr_content_mut() {
-                c.set_pikchr_content(content);
+            if let Some(c) = r.as_generated_content_mut() {
+                c.set_generated_content(content);
             };
         },
+        Msg::SetOutputType(ctx, id, output_type) => {
+            let mut state_write = state.write();
+            let target_svg = state_write
+                .windows
+                .get(&id)
+                .and_then(|window| window.as_target())
+                .map(|target| target.get_target());
+            let changed = if let Some(render) = state_write
+                .windows
+                .get_mut(&id)
+                .and_then(|window| window.as_render_toggle_mut())
+            {
+                render.set_output_type(output_type);
+                true
+            } else {
+                false
+            };
+            if changed {
+                if let Some(svg_id) = target_svg
+                    && let Some(mini_window::Window::SvgWindow(svg_window)) =
+                        state_write.windows.get_mut(&svg_id)
+                {
+                    svg_window.output_type = output_type;
+                }
+                if let Some(errorable) = state_write
+                    .windows
+                    .get_mut(&id)
+                    .and_then(|window| window.as_error_mut())
+                {
+                    errorable.set_error(None);
+                }
+                drop(state_write);
+                local_queue.push_back(Msg::Refresh(ctx, id));
+            }
+        },
         Msg::RequestRedraw(ctx, id) => {
-            let mut state_w = state.try_write()?;
-            let background = state_w.diagram_background;
-            let (svg_string, scale) = {
-                let reference = state_w.windows.get_mut(&id)?.as_svg_window()?;
+            let (svg_string, scale, background, deps) = {
+                let state_r = state.read();
+                let mini_window::Window::SvgWindow(reference) = state_r.windows.get(&id)? else {
+                    return None;
+                };
                 let svg_string = reference.svg_string.clone()?;
-                let scale = *reference.scale;
-
-                (svg_string, scale)
+                let scale = reference.scale;
+                let deps = state_r
+                    .editor_deps
+                    .get(&id)
+                    .into_iter()
+                    .flatten()
+                    .copied()
+                    .collect::<Vec<_>>();
+                (svg_string, scale, state_r.diagram_background, deps)
             };
             let background = background.resolve(&ctx.style().visuals);
             let image = crate::image::render_svg_to_image(
@@ -304,48 +355,49 @@ async fn handle_event(
             {
                 let texture =
                     ctx.load_texture("pikchr_diagram", image, egui::TextureOptions::LINEAR);
+                let mut state_w = state.try_write()?;
                 let window = state_w.windows.get_mut(&id)?.as_svg_window()?;
                 *window.diagram_texture = Some(texture);
             }
 
-            {
-                let deps: Vec<egui::Id> = {
-                    {
-                        let mut editor_deps = state_w.editor_deps.clone();
-                        editor_deps.entry(id).or_default().iter().cloned().collect()
-                    }
-                };
-                for dep_id in deps {
-                    if dep_id == id {
-                        return None;
-                    }
-                    local_queue.push_back(Msg::RequestRedraw(ctx.clone(), dep_id));
+            for dep_id in deps {
+                if dep_id == id {
+                    return None;
                 }
+                local_queue.push_back(Msg::RequestRedraw(ctx.clone(), dep_id));
             }
 
             ctx.request_repaint();
         },
-        Msg::UpdatePikchr(ctx, id, content) => {
-            // Logic for immediate updates
-            let (svg_maybe, svg_id) = {
-                let state_clone = state.clone();
-                let mut writable_state = state_clone.write();
-                let content = crate::replace_content(&mut writable_state, id, &content);
-
-                let windows_enum = &writable_state.windows;
-
-                let window = windows_enum.get(&id)?;
+        Msg::UpdateRender(ctx, id, content) => {
+            let (content, output_type, svg_id) = {
+                let mut writable_state = state.write();
+                let content = match crate::replace_content(&mut writable_state, id, &content) {
+                    Ok(content) => content,
+                    Err(err) => {
+                        if let Some(errorable) = writable_state
+                            .windows
+                            .get_mut(&id)
+                            .and_then(|w| w.as_error_mut())
+                        {
+                            errorable.set_error(Some(err.clone()));
+                        }
+                        writable_state.log.push(err);
+                        ctx.request_repaint();
+                        return Some(());
+                    },
+                };
+                let window = writable_state.windows.get(&id)?;
                 let svg_id = window.as_target().map(|t| t.get_target())?;
-                (
-                    pikchr_pro::pikchr::render_pikchr(pikchr_pro::types::PikchrCode::new(
-                        content.clone(),
-                    )),
-                    svg_id,
-                )
+                let output_type = window
+                    .as_render_toggle()
+                    .map(|render| render.output_type())
+                    .unwrap_or_default();
+                (content, output_type, svg_id)
             };
+            let svg_maybe = crate::render::render(output_type, &content);
 
-            let state_clone = state.clone();
-            let mut writable_state = state_clone.write();
+            let mut writable_state = state.write();
             match svg_maybe {
                 Err(err) => {
                     if let Some(errorable) = writable_state
@@ -353,12 +405,11 @@ async fn handle_event(
                         .get_mut(&id)
                         .and_then(|w| w.as_error_mut())
                     {
-                        errorable.set_error(Some(err.inner_string()))
+                        errorable.set_error(Some(err.clone()));
                     };
-                    writable_state.log.push(format!("{:?}", err));
+                    writable_state.log.push(err);
                 },
-                Ok(svg) => {
-                    let svg_string = svg.inject_svg_style(SPACE_MONO_NAME).into_inner();
+                Ok(svg_string) => {
                     local_queue.push_back(Msg::ResetError(id));
                     if let Some(reference) = writable_state
                         .windows
@@ -372,27 +423,38 @@ async fn handle_event(
                     }
                 },
             }
-            for dep in writable_state
+            let deps: Vec<egui::Id> = writable_state
                 .editor_deps
                 .get(&id)
-                .unwrap_or(&HashSet::new())
-            {
-                local_queue.push_back(Msg::Refresh(ctx.clone(), *dep))
+                .into_iter()
+                .flatten()
+                .copied()
+                .collect();
+            for dep in deps {
+                local_queue.push_back(Msg::Refresh(ctx.clone(), dep))
             }
 
             ctx.request_repaint();
         },
         Msg::RecreateSvg(ctx, id) => {
             let svg_id = identifiers::next_global_id();
-            let svg_insert = mini_window::Window::SvgWindow(svg::SvgWindow::new(svg_id, id));
             let mut state_write = state.write();
+            let output_type = state_write
+                .windows
+                .get(&id)
+                .and_then(|window| window.as_render_toggle())
+                .map(|render| render.output_type())
+                .unwrap_or_default();
+            let mut svg_window = svg::SvgWindow::new(svg_id, id);
+            svg_window.output_type = output_type;
+            let svg_insert = mini_window::Window::SvgWindow(svg_window);
             state_write.windows.insert(svg_id, svg_insert);
 
             let content = state_write
                 .windows
                 .get(&id)?
-                .as_pikchr_content()?
-                .get_pikchr_content();
+                .as_generated_content()?
+                .get_generated_content();
             if let Some(targetable) = state_write
                 .windows
                 .get_mut(&id)
@@ -400,11 +462,28 @@ async fn handle_event(
             {
                 targetable.set_target(svg_id);
             }
-            local_queue.push_back(Msg::UpdatePikchr(ctx, id, content));
+            local_queue.push_back(Msg::UpdateRender(ctx, id, content));
         },
         Msg::UpdateProlog(ctx, id, content) => {
             // Logic for immediate updates
-            let content = crate::replace_content(&mut state.write(), id, &content);
+            let content = {
+                let mut state_write = state.write();
+                match crate::replace_content(&mut state_write, id, &content) {
+                    Ok(content) => content,
+                    Err(err) => {
+                        if let Some(errorable) = state_write
+                            .windows
+                            .get_mut(&id)
+                            .and_then(|w| w.as_error_mut())
+                        {
+                            errorable.set_error(Some(err.clone()));
+                        }
+                        state_write.log.push(err);
+                        ctx.request_repaint();
+                        return Some(());
+                    },
+                }
+            };
             let pikchr_code =
                 pikchr_pro::prolog::engine::trealla::EngineAsync::process_diagram(vec![content])
                     .await;
@@ -425,8 +504,8 @@ async fn handle_event(
                 Ok(pikchr) => {
                     local_queue.push_back(Msg::Batch(vec![
                         Msg::ResetError(id),
-                        Msg::UpdatePikchrContent(id, pikchr.clone().into_inner()),
-                        Msg::UpdatePikchr(ctx.clone(), id, pikchr.into_inner()),
+                        Msg::UpdateGeneratedContent(id, pikchr.clone().into_inner()),
+                        Msg::UpdateRender(ctx.clone(), id, pikchr.into_inner()),
                     ]));
                 },
             }
@@ -441,7 +520,24 @@ async fn handle_event(
         },
         Msg::UpdateTcl(ctx, id, content) => {
             // Logic for immediate updates
-            let content = crate::replace_content(&mut state.write(), id, &content);
+            let content = {
+                let mut state_write = state.write();
+                match crate::replace_content(&mut state_write, id, &content) {
+                    Ok(content) => content,
+                    Err(err) => {
+                        if let Some(errorable) = state_write
+                            .windows
+                            .get_mut(&id)
+                            .and_then(|w| w.as_error_mut())
+                        {
+                            errorable.set_error(Some(err.clone()));
+                        }
+                        state_write.log.push(err);
+                        ctx.request_repaint();
+                        return Some(());
+                    },
+                }
+            };
 
             let pikchr_code = tcl::safe_eval_tcl(content).await;
 
@@ -461,8 +557,8 @@ async fn handle_event(
                 Ok(pikchr) => {
                     local_queue.push_back(Msg::Batch(vec![
                         Msg::ResetError(id),
-                        Msg::UpdatePikchrContent(id, pikchr.as_str().into()),
-                        Msg::UpdatePikchr(ctx.clone(), id, pikchr),
+                        Msg::UpdateGeneratedContent(id, pikchr.as_str().into()),
+                        Msg::UpdateRender(ctx.clone(), id, pikchr),
                     ]));
                 },
             }
@@ -475,7 +571,24 @@ async fn handle_event(
             }
         },
         Msg::UpdateMruby(ctx, id, content) => {
-            let content = crate::replace_content(&mut state.write(), id, &content);
+            let content = {
+                let mut state_write = state.write();
+                match crate::replace_content(&mut state_write, id, &content) {
+                    Ok(content) => content,
+                    Err(err) => {
+                        if let Some(errorable) = state_write
+                            .windows
+                            .get_mut(&id)
+                            .and_then(|w| w.as_error_mut())
+                        {
+                            errorable.set_error(Some(err.clone()));
+                        }
+                        state_write.log.push(err);
+                        ctx.request_repaint();
+                        return Some(());
+                    },
+                }
+            };
             let pikchr_code = mruby::safe_eval_mruby(content).await;
 
             match pikchr_code {
@@ -494,8 +607,8 @@ async fn handle_event(
                 Ok(pikchr) => {
                     local_queue.push_back(Msg::Batch(vec![
                         Msg::ResetError(id),
-                        Msg::UpdatePikchrContent(id, pikchr.clone()),
-                        Msg::UpdatePikchr(ctx.clone(), id, pikchr),
+                        Msg::UpdateGeneratedContent(id, pikchr.clone()),
+                        Msg::UpdateRender(ctx.clone(), id, pikchr),
                     ]));
                 },
             }
@@ -597,16 +710,22 @@ async fn handle_event(
             let _ = crate::image::write_svg(file, svg);
             local_queue.push_back(Msg::PopModal);
         },
-        Msg::ExportPikchrToClipboard(ctx, id) => {
+        Msg::ExportSourceToClipboard(ctx, id) => {
             let content = state
                 .read()
                 .windows
                 .get(&id)?
-                .as_pikchr_content()?
-                .get_pikchr_content();
+                .as_generated_content()?
+                .get_generated_content();
 
-            let pc = crate::replace_pikchr_content(&mut state.write(), id, &content);
-            ctx.copy_text(pc);
+            let content = match crate::replace_content(&mut state.write(), id, &content) {
+                Ok(content) => content,
+                Err(err) => {
+                    state.write().log.push(err);
+                    return Some(());
+                },
+            };
+            ctx.copy_text(content);
         },
         Msg::PopModal => {
             state.write().modals.pop_front();
@@ -700,10 +819,15 @@ async fn handle_event(
                 let state_r = state.read();
                 let window = state_r.windows.get(&editor_id)?;
                 let editor_type = window.as_editor_type()?.get_editor_type();
+                let output_type = window
+                    .as_render_toggle()
+                    .map(|render| render.output_type())
+                    .unwrap_or_default();
                 let content = window.as_raw_content()?.get_raw_content();
                 LibraryEntry {
                     path: path.clone(),
                     editor_type,
+                    output_type,
                     content,
                 }
             };
@@ -745,6 +869,10 @@ async fn handle_event(
                 LibraryEntry {
                     path,
                     editor_type: window.as_editor_type()?.get_editor_type(),
+                    output_type: window
+                        .as_render_toggle()
+                        .map(|render| render.output_type())
+                        .unwrap_or_default(),
                     content: window.as_raw_content()?.get_raw_content(),
                 }
             };
@@ -950,7 +1078,7 @@ async fn handle_event(
 
             local_queue.push_back(match et {
                 crate::EditorType::Prolog => Msg::UpdateProlog(ctx, id, content),
-                crate::EditorType::Pikchr => Msg::UpdatePikchr(ctx, id, content),
+                crate::EditorType::Pikchr => Msg::UpdateRender(ctx, id, content),
                 crate::EditorType::Tcl => Msg::UpdateTcl(ctx, id, content),
                 crate::EditorType::Mruby => Msg::UpdateMruby(ctx, id, content),
                 crate::EditorType::PlainText => Msg::UpdatePlainText(ctx, id),
@@ -1083,6 +1211,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn changing_output_type_updates_editor_preview_and_refreshes() {
+        let editor_id = egui::Id::new("editor");
+        let svg_id = egui::Id::new("svg");
+        let ctx = egui::Context::default();
+        let state = Arc::new(RwLock::new(AppState::default()));
+        {
+            let mut state = state.write();
+            state.windows.insert(
+                editor_id,
+                mini_window::Window::PikchrEditor(pikchr_editor::PikchrEditor::new(
+                    editor_id, svg_id,
+                )),
+            );
+            state.windows.insert(
+                svg_id,
+                mini_window::Window::SvgWindow(svg::SvgWindow::new(svg_id, editor_id)),
+            );
+        }
+
+        let mut local_queue = VecDeque::new();
+        handle_event(
+            crate::logger::init_logger(),
+            Msg::SetOutputType(ctx, editor_id, crate::OutputType::Svgbob),
+            state.clone(),
+            &mut local_queue,
+        )
+        .await;
+
+        let state_read = state.read();
+        assert_eq!(
+            state_read
+                .windows
+                .get(&editor_id)
+                .and_then(|window| window.as_render_toggle())
+                .map(|render| render.output_type()),
+            Some(crate::OutputType::Svgbob)
+        );
+        assert!(matches!(
+            state_read.windows.get(&svg_id),
+            Some(mini_window::Window::SvgWindow(svg)) if svg.output_type == crate::OutputType::Svgbob
+        ));
+        assert!(
+            local_queue
+                .iter()
+                .any(|msg| matches!(msg, Msg::Refresh(_, id) if *id == editor_id))
+        );
+    }
+
+    #[tokio::test]
     async fn updating_pikchr_dependency_refreshes_dependent_from_its_own_content() {
         let source_id = egui::Id::new("source");
         let source_svg_id = egui::Id::new("source-svg");
@@ -1124,7 +1301,7 @@ mod tests {
         let mut local_queue = VecDeque::new();
         handle_event(
             crate::logger::init_logger(),
-            Msg::UpdatePikchr(ctx, source_id, "box".into()),
+            Msg::UpdateRender(ctx, source_id, "box".into()),
             state,
             &mut local_queue,
         )
@@ -1138,7 +1315,7 @@ mod tests {
         assert!(
             !local_queue
                 .iter()
-                .any(|msg| matches!(msg, Msg::UpdatePikchr(_, id, content) if *id == dependent_id && content == "box"))
+                .any(|msg| matches!(msg, Msg::UpdateRender(_, id, content) if *id == dependent_id && content == "box"))
         );
     }
 
@@ -1277,9 +1454,15 @@ mod tests {
             crate::EditorType::PlainText,
         ] {
             let state = Arc::new(RwLock::new(AppState::default()));
+            let output_type = if editor_type == crate::EditorType::Pikchr {
+                crate::OutputType::Svgbob
+            } else {
+                crate::OutputType::Pikchr
+            };
             let entry = LibraryEntry {
                 path: format!("folder/{editor_type:?}"),
                 editor_type,
+                output_type,
                 content: format!("content for {editor_type:?}"),
             };
             state
@@ -1312,6 +1495,12 @@ mod tests {
                 state_read.window_library_paths.get(id).map(String::as_str),
                 Some(entry.path.as_str())
             );
+            if editor_type != crate::EditorType::PlainText {
+                assert_eq!(
+                    window.as_render_toggle().map(|render| render.output_type()),
+                    Some(output_type)
+                );
+            }
             assert!(
                 local_queue
                     .iter()

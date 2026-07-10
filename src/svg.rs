@@ -24,6 +24,8 @@ pub struct SvgWindow {
     #[serde(skip)]
     watch_tx: Option<tokio::sync::watch::Sender<(egui::Context, egui::Id)>>,
     pub(crate) visible: bool,
+    #[serde(default)]
+    pub(crate) output_type: crate::OutputType,
     index: usize,
     #[serde(skip_serializing, default)]
     initialized: bool,
@@ -64,6 +66,7 @@ impl SvgWindow {
             scale: 1.5,
             image: None,
             visible: true,
+            output_type: crate::OutputType::Pikchr,
             initialized: false,
             watch_tx: None,
         }
@@ -110,8 +113,11 @@ impl HasMenu for SvgWindow {
                     ));
                     ui.close();
                 }
-                if ui.button("Pikchr Code to Clipboard").clicked() {
-                    let _ = tx.try_send(Msg::ExportPikchrToClipboard(
+                if ui
+                    .button(format!("{} Source to Clipboard", self.output_type.label()))
+                    .clicked()
+                {
+                    let _ = tx.try_send(Msg::ExportSourceToClipboard(
                         ui.ctx().to_owned(),
                         self.owner_id,
                     ));

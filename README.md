@@ -4,14 +4,15 @@
 <h1 align="center">DiagramIDE</h1>
 <p align="center"><em>Diagrams as source files.</em></p>
 
-DiagramIDE is a small workspace for writing [Pikchr] diagrams, previewing the
-rendered result, and keeping related source fragments in one place. It is built
-for users who prefer diagrams to remain inspectable as text.
+DiagramIDE is a small workspace for writing [Pikchr] or [Svgbob] diagrams,
+previewing the rendered result, and keeping related source fragments in one
+place. It is built for users who prefer diagrams to remain inspectable as text.
 
-A diagram may be written **directly** in Pikchr, **assembled** from named
-fragments, or **generated** from a small program — Prolog DCGs, Tcl, or Ruby.
+A diagram may be written **directly**, **assembled** from named fragments, or
+**generated** from a small program — Prolog DCGs, Tcl, or Ruby. Each diagram
+editor chooses Pikchr or Svgbob as its Output Type; Pikchr remains the default.
 Rendered output can be exported as SVG, PNG, transparent PNG, or copied as
-Pikchr source.
+generated source.
 
 ## Screenshots
 
@@ -27,28 +28,28 @@ Pikchr source.
 ## Features
 
 **Source**
-- Pikchr editor with **live preview** — see the output (or errors) as you type.
+- Direct source editor with **live preview** — choose Pikchr or Svgbob per editor.
 - Plain-text fragments and named editors for reuse.
 
-**Generation** — produce Pikchr from a small program when the structure is repetitive:
+**Generation** — produce source for the selected output type from a small program when the structure is repetitive:
 - **Prolog** — define diagrams as DCGs (root `diagram//0`); runs [Trealla Prolog] embedded via WASM.
 - **Tcl** — concise text-transformation scripting; requires Tcl 8.6 libraries.
-- **Ruby** — generate Pikchr through `print`/`puts`; requires Ruby available.
+- **Ruby** — generate source through `print`/`puts`; requires Ruby available.
 
 **Composition** — reference one editor from another:
-- `$$name$$` — include another editor's *generated* Pikchr output.
+- `$$name$$` — include another editor's generated source when both editors have the same Output Type.
 - `!!name!!` — include another editor's *raw* source.
 
 **Workspaces**
 - Multiple related editors, render windows, and snippets in one place, with autosaving.
 
 **Export**
-- SVG · PNG (opaque) · PNG (transparent) · copy generated Pikchr source.
+- SVG · PNG (opaque) · PNG (transparent) · copy generated Pikchr or Svgbob source.
 - Renders use the Space Mono font for crisp preview and PNG output.
 
 ## Workflow
 
-1. **Write** — create the diagram in Pikchr, or generate Pikchr when the structure is repetitive.
+1. **Write** — create the diagram in Pikchr or Svgbob, or generate source when the structure is repetitive.
 2. **Inspect** — keep source and rendered diagram visible at the same time.
 3. **Reuse** — move repeated shapes, labels, or layout fragments into named editors.
 4. **Export** — produce an image or copy the generated source when the diagram is ready.
@@ -98,7 +99,7 @@ DiagramIDE works and can create and export diagrams, but it is not yet polished:
 ### Hidden features
 
 - <kbd>Cmd/Ctrl</kbd>+<kbd>R</kbd> in an editor renames it.
-- `$$EDITOR_NAME$$` embeds an editor's generated Pikchr in another editor.
+- `$$EDITOR_NAME$$` embeds an editor's generated source in another editor with the same Output Type.
 - `!!EDITOR_NAME!!` embeds an editor's raw source in another editor.
 - <kbd>Cmd/Ctrl</kbd>+click destroys a window (the × button only hides it).
 
@@ -107,7 +108,7 @@ DiagramIDE works and can create and export diagrams, but it is not yet polished:
 DiagramIDE currently embeds Tcl and Prolog for generation. There are two
 requirements for a language to be integrated:
 
-- It must be able to return text (valid Pikchr after transformation).
+- It must be able to return text valid for the editor's selected Output Type.
 - It must be embeddable into Rust.
 
 Prolog (Trealla, via WASM) was the first, since DCGs enable declarative diagrams
@@ -142,6 +143,8 @@ satellite projects **pikchr.pl** and **pikchr.pro** are licensed under the
 - **Space Mono font** — SIL Open Font License 1.1. See [`assets/fonts/LICENSE.SpaceMono`](./assets/fonts/LICENSE.SpaceMono).
 - **Trealla Prolog** — MIT-style license. See [`crates/trealla_wasm/native/tpl/LICENSE`](./crates/trealla_wasm/native/tpl/LICENSE).
 - **Pikchr** — the author disclaims copyright (zero-clause BSD). See the header of [`crates/pikchr_pro/native/pikchr/pikchr.c`](./crates/pikchr_pro/native/pikchr/pikchr.c).
+- **Svgbob** — Apache-2.0, pinned to the [`exlee/svgbob` optimization revision](https://github.com/exlee/svgbob/tree/axk-optimization-work).
 
 [Pikchr]: https://pikchr.org
+[Svgbob]: https://github.com/ivanceras/svgbob
 [Trealla Prolog]: https://github.com/trealla-prolog/trealla

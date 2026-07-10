@@ -1,6 +1,7 @@
 DiagramIDE
 
 - This crate is licensed under the Business Source License 1.1.
+- Includes Svgbob (Apache-2.0) from https://github.com/ivanceras/svgbob.
 
 - Individual & Voluntary Use: You are free to use this software for your own
   productivity and personal projects.

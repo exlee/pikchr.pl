@@ -55,6 +55,11 @@ fn common_editor_help(ui: &mut egui::Ui) {
     );
     feature(
         ui,
+        "Output Type",
+        "Choose Pikchr or Svgbob per diagram editor. Generated references only compose matching output types.",
+    );
+    feature(
+        ui,
         "Cmd/Ctrl+R",
         "Renames the focused editor. Names are used by cross-window references.",
     );
@@ -83,7 +88,7 @@ fn common_editor_help(ui: &mut egui::Ui) {
     feature(
         ui,
         "$$NAME$$",
-        "Includes the generated Pikchr output of another named diagram editor.",
+        "Includes generated source from another named diagram editor when both editors use the same Output Type.",
     );
     ui.label("References can be nested up to three replacement passes.");
 }
@@ -103,17 +108,17 @@ fn topic_help(ui: &mut egui::Ui, topic: HelpTopic, tx: &Sender<Msg>) {
         HelpTopic::Prolog => {
             common_editor_help(ui);
             heading(ui, "Prolog");
-            ui.label("Define a diagram//0 DCG. Its text output is interpreted as Pikchr.");
+            ui.label("Define a diagram//0 DCG. Its text output is interpreted using the selected Output Type.");
         },
         HelpTopic::Tcl => {
             common_editor_help(ui);
             heading(ui, "Tcl");
-            ui.label("Return a string containing Pikchr source. The Tcl editor is available only when Tcl 8.6 can be loaded.");
+            ui.label("Return source for the selected Output Type. The Tcl editor is available only when Tcl 8.6 can be loaded.");
         },
         HelpTopic::Mruby => {
             common_editor_help(ui);
             heading(ui, "Ruby");
-            ui.label("Text written with print or puts becomes Pikchr source. The editor is available only when Ruby support is available.");
+            ui.label("Text written with print or puts becomes source for the selected Output Type. The editor is available only when Ruby support is available.");
         },
         HelpTopic::PlainText => {
             common_editor_help(ui);
@@ -125,12 +130,12 @@ fn topic_help(ui: &mut egui::Ui, topic: HelpTopic, tx: &Sender<Msg>) {
             feature(
                 ui,
                 "Automatic preview",
-                "Displays the paired editor's generated Pikchr output and redraws as the window is resized.",
+                "Displays the paired editor's generated output and redraws as the window is resized.",
             );
             feature(
                 ui,
                 "Export",
-                "Exports SVG, PNG, transparent PNG, or copies generated Pikchr code to the clipboard.",
+                "Exports SVG, PNG, transparent PNG, or copies generated Pikchr or Svgbob source to the clipboard.",
             );
             feature(
                 ui,
@@ -187,17 +192,17 @@ pub(super) fn render_guide(ui: &mut egui::Ui, topic: HelpTopic, tx: &Sender<Msg>
             common_editor_help(ui);
 
             heading(ui, "Editor types");
-            feature(ui, "Pikchr", "Direct Pikchr source with live rendering.");
-            feature(ui, "Prolog", "A diagram//0 DCG generates Pikchr source.");
+            feature(ui, "Pikchr", "Direct source editor with Pikchr or Svgbob output.");
+            feature(ui, "Prolog", "A diagram//0 DCG generates source for the selected output type.");
             feature(
                 ui,
                 "Tcl",
-                "A Tcl script returns Pikchr source when Tcl 8.6 is available.",
+                "A Tcl script returns source for the selected output type when Tcl 8.6 is available.",
             );
             feature(
                 ui,
                 "Ruby",
-                "print and puts output becomes Pikchr when Ruby support is available.",
+                "print and puts output becomes source for the selected output type when Ruby support is available.",
             );
             feature(
                 ui,
@@ -214,7 +219,7 @@ pub(super) fn render_guide(ui: &mut egui::Ui, topic: HelpTopic, tx: &Sender<Msg>
             feature(
                 ui,
                 "Export",
-                "Render windows export SVG, PNG, transparent PNG, and generated Pikchr source.",
+                "Render windows export SVG, PNG, transparent PNG, and generated source for their selected output type.",
             );
             feature(
                 ui,

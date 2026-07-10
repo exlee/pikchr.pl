@@ -22,6 +22,7 @@ mod mruby_editor;
 mod pikchr_editor;
 mod plain_text_editor;
 mod prolog_editor;
+mod render;
 mod response_ext;
 mod sender_ext;
 pub mod state;
@@ -65,7 +66,7 @@ pub enum Msg {
     // Exporting
     ExportModal(egui::Id, String, ExportType),
     Export(egui::Id, String, ExportType, Box<egui::Visuals>),
-    ExportPikchrToClipboard(#[serde(skip)] Context, egui::Id),
+    ExportSourceToClipboard(#[serde(skip)] Context, egui::Id),
 
     // Editor Menu
     FontSizeModal(egui::Id),
@@ -83,14 +84,15 @@ pub enum Msg {
 
     // Drawing
     RequestRedraw(#[serde(skip)] Context, egui::Id),
-    UpdatePikchr(#[serde(skip)] Context, egui::Id, String),
+    UpdateRender(#[serde(skip)] Context, egui::Id, String),
     UpdateProlog(#[serde(skip)] Context, egui::Id, String),
     UpdateTcl(#[serde(skip)] Context, egui::Id, String),
     UpdateMruby(#[serde(skip)] Context, egui::Id, String),
     UpdatePlainText(#[serde(skip)] Context, egui::Id),
     ResetError(egui::Id),
     UpdateContent(egui::Id, String),
-    UpdatePikchrContent(egui::Id, String),
+    UpdateGeneratedContent(egui::Id, String),
+    SetOutputType(#[serde(skip)] Context, egui::Id, OutputType),
     DeleteWindow(egui::Id),
 
     // Windows
@@ -150,6 +152,22 @@ pub enum EditorType {
     Tcl,
     Mruby,
     PlainText,
+}
+
+#[derive(PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize, Clone, Copy, Default)]
+pub enum OutputType {
+    #[default]
+    Pikchr,
+    Svgbob,
+}
+
+impl OutputType {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Pikchr => "Pikchr",
+            Self::Svgbob => "Svgbob",
+        }
+    }
 }
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone, Copy)]
 pub enum Window {
@@ -354,15 +372,14 @@ impl eframe::App for DiagramIDE {
     }
 }
 
-fn has_dependency(content: &str, name: &str) -> bool {
-    let options = vec![format!("!!{}!!", name), format!("$${}$$", name)];
-    for o in options {
-        if content.contains(&o) {
-            return true;
-        }
-    }
-    false
+fn has_raw_dependency(content: &str, name: &str) -> bool {
+    content.contains(&format!("!!{name}!!"))
 }
+
+fn has_generated_dependency(content: &str, name: &str) -> bool {
+    content.contains(&format!("$${name}$$"))
+}
+
 fn clean_old_deps(state: &mut AppState) {
     let span = tracing::info_span!("clean_old_deps", deps_cleaned = tracing::field::Empty);
     let _enter = span.enter();
@@ -378,11 +395,11 @@ fn clean_old_deps(state: &mut AppState) {
         };
         let ids = editor_deps.entry(dkey).or_default();
         for id in ids.clone().into_iter() {
-            let pik_content = state
+            let generated_content = state
                 .windows
                 .get(&id)
-                .and_then(|w| w.as_pikchr_content())
-                .map(|pc| pc.get_pikchr_content())
+                .and_then(|w| w.as_generated_content())
+                .map(|pc| pc.get_generated_content())
                 .unwrap_or_default();
 
             let raw_content = state
@@ -392,11 +409,17 @@ fn clean_old_deps(state: &mut AppState) {
                 .map(|pc| pc.get_raw_content())
                 .unwrap_or_default();
 
-            let dep_count: usize = vec![pik_content, raw_content]
-                .into_iter()
-                .map(|c| has_dependency(&c, &dname))
-                .map(|b| if b { 1 } else { 0 })
-                .sum();
+            let raw_dependency = has_raw_dependency(&raw_content, &dname);
+            let generated_dependency = state
+                .windows
+                .get(&dkey)
+                .and_then(|w| w.as_render_toggle())
+                .zip(state.windows.get(&id).and_then(|w| w.as_render_toggle()))
+                .is_some_and(|(source, target)| {
+                    source.output_type() == target.output_type()
+                        && has_generated_dependency(&generated_content, &dname)
+                });
+            let dep_count = usize::from(raw_dependency) + usize::from(generated_dependency);
             if dep_count == 0 {
                 tracing::debug!(from = ?&dkey, to = ?&id, "removing dependency");
 
@@ -425,7 +448,7 @@ fn replace_raw_content(state: &mut AppState, id: egui::Id, content: &str) -> Str
     let mut content = String::from(content);
     for (repl_id, name, _repl, _value) in &editors {
         let entry = state.editor_deps.entry(*repl_id).or_default();
-        if has_dependency(&content, name) {
+        if has_raw_dependency(&content, name) {
             slog_scope::debug!("new dependency"; "type" => "raw", "payload" => format!("{:?} -> {:?}", repl_id, id));
             entry.insert(id);
         }
@@ -438,41 +461,69 @@ fn replace_raw_content(state: &mut AppState, id: egui::Id, content: &str) -> Str
     }
     content
 }
-fn replace_content(state: &mut AppState, id: egui::Id, content: &str) -> String {
-    let content = replace_pikchr_content(state, id, content);
-    replace_raw_content(state, id, &content)
+fn replace_content(state: &mut AppState, id: egui::Id, content: &str) -> Result<String, String> {
+    let output_type = state
+        .windows
+        .get(&id)
+        .and_then(|window| window.as_render_toggle())
+        .map(|render| render.output_type())
+        .unwrap_or_default();
+    let content = replace_generated_content(state, id, content, output_type)?;
+    Ok(replace_raw_content(state, id, &content))
 }
-fn replace_pikchr_content(state: &mut AppState, id: egui::Id, content: &str) -> String {
-    let editors: Vec<(egui::Id, &str, String, String)> = state
+fn replace_generated_content(
+    state: &mut AppState,
+    id: egui::Id,
+    content: &str,
+    output_type: OutputType,
+) -> Result<String, String> {
+    let editors: Vec<(egui::Id, &str, String, String, OutputType)> = state
         .windows
         .values()
         .flat_map(|e| e.as_editor_window())
         .filter(|e| e.id != &id)
         .map(|e| {
+            let source_output_type = e.mini_window.output_type();
+            let generated_content = e.content.get_generated_content();
+            let generated_content = match source_output_type {
+                OutputType::Pikchr => generated_content.trim().replace('\n', ";"),
+                OutputType::Svgbob => generated_content,
+            };
             (
                 *e.id,
                 e.name,
                 format!("$${}$$", e.name),
-                e.content.get_pikchr_content().trim().replace("\n", ";"),
+                generated_content,
+                source_output_type,
             )
         })
         .collect();
     let mut content = String::from(content);
 
-    for (repl_id, name, _repl, _value) in &editors {
+    for (repl_id, name, _repl, _value, source_output_type) in &editors {
+        if has_generated_dependency(&content, name) && *source_output_type != output_type {
+            return Err(format!(
+                "Generated reference $${name}$$ uses {} output, but this editor uses {}",
+                source_output_type.label(),
+                output_type.label()
+            ));
+        }
         let entry = state.editor_deps.entry(*repl_id).or_default();
-        if has_dependency(&content, name) {
-            slog_scope::debug!("new dependency"; "type" => "pikchr", "payload" => format!("{:?} -> {:?}", repl_id, id));
+        if has_generated_dependency(&content, name) {
+            slog_scope::debug!("new dependency"; "type" => "generated", "payload" => format!("{:?} -> {:?}", repl_id, id));
             entry.insert(id);
         };
     }
     for _ in 1..=3 {
-        for (_repl_id, _name, repl, value) in &editors {
-            let wrapped_value = format!("{value};");
+        for (_repl_id, _name, repl, value, source_output_type) in &editors {
+            let wrapped_value = match source_output_type {
+                OutputType::Pikchr => format!("{value};"),
+                OutputType::Svgbob => value.clone(),
+            };
             content = content.replace(repl, &wrapped_value);
         }
     }
-    content
+    Ok(content)
 }
 
 pub const SPACE_MONO_BYTES: &[u8] = include_bytes!("../assets/fonts/SpaceMono-Regular.ttf");
@@ -517,7 +568,7 @@ mod tests {
 
     use crate::{
         DiagramIDE, Msg,
-        mini_window::{HasName, RawContent, Window, WindowType},
+        mini_window::{HasName, RawContent, RenderToggle, Window, WindowType},
         pikchr_editor::PikchrEditor,
         plain_text_editor::PlainTextEditor,
         state::AppState,
@@ -542,21 +593,87 @@ mod tests {
         );
 
         assert_eq!(
-            crate::replace_content(&mut state, pikchr_id, "before !!REF!! after"),
+            crate::replace_content(&mut state, pikchr_id, "before !!REF!! after").unwrap(),
             "before embedded text after"
         );
         assert_eq!(
-            crate::replace_pikchr_content(&mut state, pikchr_id, "$$REF$$"),
+            crate::replace_generated_content(
+                &mut state,
+                pikchr_id,
+                "$$REF$$",
+                crate::OutputType::Pikchr,
+            )
+            .unwrap(),
             "$$REF$$"
         );
         assert!(
             state
                 .windows
                 .get(&plain_id)
-                .and_then(Window::as_pikchr_content)
+                .and_then(Window::as_generated_content)
                 .is_none()
         );
         assert!(state.editor_deps[&plain_id].contains(&pikchr_id));
+    }
+
+    #[test]
+    fn generated_references_preserve_output_language_rules() {
+        let source_id = crate::egui::Id::new("source");
+        let target_id = crate::egui::Id::new("target");
+        let mut source = PikchrEditor::new(source_id, crate::egui::Id::new("source-svg"));
+        let mut target = PikchrEditor::new(target_id, crate::egui::Id::new("target-svg"));
+        source.set_name("SOURCE".into());
+        source.set_raw_content("box\ncircle".into());
+
+        let mut state = AppState::default();
+        state
+            .windows
+            .insert(source_id, Window::PikchrEditor(source.clone()));
+        state
+            .windows
+            .insert(target_id, Window::PikchrEditor(target.clone()));
+
+        assert_eq!(
+            crate::replace_generated_content(
+                &mut state,
+                target_id,
+                "$$SOURCE$$",
+                crate::OutputType::Pikchr,
+            )
+            .unwrap(),
+            "box;circle;"
+        );
+
+        source.set_output_type(crate::OutputType::Svgbob);
+        source.set_raw_content("+---+\n| A |\n+---+".into());
+        target.set_output_type(crate::OutputType::Svgbob);
+        state
+            .windows
+            .insert(source_id, Window::PikchrEditor(source));
+        state
+            .windows
+            .insert(target_id, Window::PikchrEditor(target));
+
+        assert_eq!(
+            crate::replace_generated_content(
+                &mut state,
+                target_id,
+                "before\n$$SOURCE$$\nafter",
+                crate::OutputType::Svgbob,
+            )
+            .unwrap(),
+            "before\n+---+\n| A |\n+---+\nafter"
+        );
+
+        let error = crate::replace_generated_content(
+            &mut state,
+            target_id,
+            "$$SOURCE$$",
+            crate::OutputType::Pikchr,
+        )
+        .unwrap_err();
+        assert!(error.contains("Svgbob"));
+        assert!(error.contains("Pikchr"));
     }
 
     #[tokio::test]

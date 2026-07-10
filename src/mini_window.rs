@@ -48,6 +48,12 @@ macro_rules! impl_render {
             fn set_render_enabled(&mut self, on: bool) {
                 self.$field = on;
             }
+            fn output_type(&self) -> $crate::OutputType {
+                self.output_type
+            }
+            fn set_output_type(&mut self, output_type: $crate::OutputType) {
+                self.output_type = output_type;
+            }
         }
     };
 }
@@ -91,6 +97,10 @@ pub trait RenderToggle: Send + Sync {
         true
     }
     fn set_render_enabled(&mut self, _on: bool) {}
+    fn output_type(&self) -> crate::OutputType {
+        crate::OutputType::Pikchr
+    }
+    fn set_output_type(&mut self, _output_type: crate::OutputType) {}
 }
 
 pub trait MiniWindow: Send + Sync + Visible + Id + HasMenu + InnerWindow + RenderToggle {
@@ -150,6 +160,28 @@ pub trait MiniWindow: Send + Sync + Visible + Id + HasMenu + InnerWindow + Rende
 
                             // Render toggle (only on windows that own a renderer).
                             if self.has_renderer() {
+                                let output_type = self.output_type();
+                                ui.menu_button("Output", |ui| {
+                                    for candidate in
+                                        [crate::OutputType::Pikchr, crate::OutputType::Svgbob]
+                                    {
+                                        if ui
+                                            .selectable_label(
+                                                output_type == candidate,
+                                                candidate.label(),
+                                            )
+                                            .clicked()
+                                        {
+                                            self.set_output_type(candidate);
+                                            let _ = tx.try_send(Msg::SetOutputType(
+                                                ctx.clone(),
+                                                self.get_id(),
+                                                candidate,
+                                            ));
+                                            ui.close();
+                                        }
+                                    }
+                                });
                                 let render = self.render_enabled();
                                 if selectable_icon_button(ui, AppIcon::Render, render)
                                     .on_hover_text("Render diagram\n(unselect for include-only)")
@@ -226,9 +258,9 @@ pub trait EditorType: Send + Sync {
     fn get_editor_type(&self) -> crate::EditorType;
 }
 
-pub trait PikchrContent: Send + Sync + Indexable {
-    fn get_pikchr_content(&self) -> String;
-    fn set_pikchr_content(&mut self, value: String);
+pub trait GeneratedContent: Send + Sync + Indexable {
+    fn get_generated_content(&self) -> String;
+    fn set_generated_content(&mut self, value: String);
 }
 pub trait RawContent: Send + Sync + Indexable {
     fn get_raw_content(&self) -> String;
@@ -329,13 +361,13 @@ macro_rules! impl_target {
 }
 
 #[macro_export]
-macro_rules! impl_pikchr_content {
+macro_rules! impl_generated_content {
     ($name:ident, $field:ident) => {
-        impl $crate::mini_window::PikchrContent for $name {
-            fn get_pikchr_content(&self) -> String {
+        impl $crate::mini_window::GeneratedContent for $name {
+            fn get_generated_content(&self) -> String {
                 self.$field.clone()
             }
-            fn set_pikchr_content(&mut self, value: String) {
+            fn set_generated_content(&mut self, value: String) {
                 self.$field = value;
             }
         }
@@ -499,6 +531,17 @@ impl Window {
         ],
     );
     trait_getter!(
+        RenderToggle,
+        as_render_toggle,
+        [
+            PikchrEditor,
+            PrologEditor,
+            TclEditor,
+            MrubyEditor,
+            SvgWindow
+        ],
+    );
+    trait_getter!(
         view EditorWindowView<'_>, as_editor_window, get_editor_window,
         [PikchrEditor,PrologEditor, TclEditor,MrubyEditor],
     );
@@ -534,8 +577,8 @@ impl Window {
         ],
     );
     trait_getter!(
-        PikchrContent,
-        as_pikchr_content,
+        GeneratedContent,
+        as_generated_content,
         [PikchrEditor, PrologEditor, TclEditor, MrubyEditor],
     );
 }
@@ -574,7 +617,7 @@ pub struct WindowView<'a> {
 pub struct EditorWindowView<'a> {
     pub index: &'a usize,
     pub id: &'a egui::Id,
-    pub content: &'a dyn PikchrContent,
+    pub content: &'a dyn GeneratedContent,
     pub editor_type: &'a dyn EditorType,
     pub name: &'a str,
     pub mini_window: &'a dyn MiniWindow,

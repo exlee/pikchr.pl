@@ -4,7 +4,7 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     Msg,
     editor::{self, GenericEditor, HandleEnter as _},
-    impl_id, impl_indexable, impl_pikchr_content, impl_render, impl_target, impl_visible,
+    impl_generated_content, impl_id, impl_indexable, impl_render, impl_target, impl_visible,
     mini_window::{self, HasMenu, HasName as _, MiniWindow},
     sender_ext::DebouncedTrySend as _,
     setter_getter_for_trait,
@@ -24,6 +24,8 @@ pub struct MrubyEditor {
     /// Whether the render (SVG) window should be shown.
     #[serde(default = "default_render")]
     pub(crate) render: bool,
+    #[serde(default)]
+    pub(crate) output_type: crate::OutputType,
 }
 
 fn default_render() -> bool {
@@ -42,6 +44,7 @@ impl MrubyEditor {
             index: 1,
             error: None,
             render: true,
+            output_type: crate::OutputType::Pikchr,
         }
     }
 
@@ -63,7 +66,7 @@ impl mini_window::EditorWindow for MrubyEditor {
         crate::mini_window::EditorWindowView {
             index: &self.index,
             id: &self.id,
-            content: self as &dyn mini_window::PikchrContent,
+            content: self as &dyn mini_window::GeneratedContent,
             editor_type: self as &dyn mini_window::EditorType,
             mini_window: self as &dyn MiniWindow,
             name: &self.name,
@@ -132,7 +135,7 @@ impl_render!(MrubyEditor, render);
 impl_id!(MrubyEditor, id);
 impl_indexable!(MrubyEditor);
 impl_visible!(MrubyEditor, visible);
-impl_pikchr_content!(MrubyEditor, pikchr_content);
+impl_generated_content!(MrubyEditor, pikchr_content);
 impl_target!(MrubyEditor, target_svg);
 setter_getter_for_trait! { (content => String | content.clone() => String) for MrubyEditor as raw_content for mini_window::RawContent }
 setter_getter_for_trait! { (error => Option<String> | error.clone() => Option<String>) for MrubyEditor as error for mini_window::HasError }
