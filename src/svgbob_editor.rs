@@ -4,6 +4,7 @@ use tokio::sync::{mpsc::Sender, watch};
 use crate::{
     Msg, SvgbobEditMode,
     editor::{self, GenericEditor, HandleEnter as _},
+    icons::{AppIcon, icon_button},
     impl_generated_content, impl_id, impl_indexable, impl_initialize, impl_initialize_tx,
     impl_target, impl_visible,
     mini_window::{
@@ -283,17 +284,21 @@ impl HasMenu for SvgbobEditor {
     }
 
     fn menu(&self, ui: &mut Ui, tx: Sender<Msg>) {
-        ui.menu_button("Mode", |ui| {
-            for mode in [SvgbobEditMode::Insert, SvgbobEditMode::Replace] {
-                if ui
-                    .selectable_label(self.mode == mode, mode.label())
-                    .clicked()
-                {
-                    let _ = tx.try_send(Msg::SetSvgbobEditMode(self.id, mode));
-                    ui.close();
-                }
-            }
-        });
+        let icon = match self.mode {
+            SvgbobEditMode::Insert => AppIcon::InsertMode,
+            SvgbobEditMode::Replace => AppIcon::ReplaceMode,
+        };
+        let next_mode = self.mode.toggled();
+        if icon_button(ui, icon)
+            .on_hover_text(format!(
+                "{} mode\nSwitch to {}",
+                self.mode.label(),
+                next_mode.label()
+            ))
+            .clicked()
+        {
+            let _ = tx.try_send(Msg::SetSvgbobEditMode(self.id, next_mode));
+        }
     }
 }
 
@@ -363,9 +368,20 @@ impl GenericEditor for SvgbobEditor {
         self.handle_indent(ctx, ui, editor_id, |_| String::new());
     }
 
-    // Keep Tab available for dedicated Svgbob bindings instead of consuming it
-    // for the shared source-editor indentation behavior.
-    fn handle_tab_binding(&mut self, _ctx: &Context, _ui: &mut Ui, _editor_id: egui::Id) -> bool {
+    fn handle_tab_binding(&mut self, _ctx: &Context, ui: &mut Ui, editor_id: egui::Id) -> bool {
+        if !ui.memory(|memory| memory.has_focus(editor_id)) {
+            return false;
+        }
+        let tab_pressed =
+            ui.input(|input| !input.modifiers.any() && input.key_pressed(egui::Key::Tab));
+        if tab_pressed {
+            ui.input_mut(|input| {
+                input.consume_key(egui::Modifiers::NONE, egui::Key::Tab);
+            });
+            self.mode = self.mode.toggled();
+        }
+
+        // Switching modes does not change editor content.
         false
     }
 

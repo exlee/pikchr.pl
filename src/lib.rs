@@ -149,8 +149,8 @@ pub enum Msg {
 
 /// Editing semantics for the dedicated Svgbob canvas editor.
 ///
-/// Replace is persisted and selectable now so bindings can target it, but it
-/// intentionally keeps Insert behavior until replacement editing lands.
+/// The mode is persisted and can be toggled from the editor toolbar or with
+/// Tab while the canvas has focus.
 #[derive(Default, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize, Clone, Copy)]
 pub enum SvgbobEditMode {
     #[default]
@@ -163,6 +163,13 @@ impl SvgbobEditMode {
         match self {
             Self::Insert => "Insert",
             Self::Replace => "Replace",
+        }
+    }
+
+    pub const fn toggled(self) -> Self {
+        match self {
+            Self::Insert => Self::Replace,
+            Self::Replace => Self::Insert,
         }
     }
 }

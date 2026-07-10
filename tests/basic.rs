@@ -131,3 +131,20 @@ async fn test_new_svgbob_editor() {
     harness.step();
     let _ = harness.try_run_realtime();
 }
+
+#[tokio::test]
+async fn test_svgbob_mode_icon_and_tab_swap() {
+    let mut harness = build_harness().await;
+    harness.run_steps(10);
+    harness.get_by_label("New").click_accesskit();
+    harness.run_ok();
+    harness.get_by_label("Svgbob").click_accesskit();
+    poll(&mut harness, |h| h.query_by_label("Insert mode").is_some()).await;
+
+    harness.get_by_label("Insert mode").click_accesskit();
+    poll(&mut harness, |h| h.query_by_label("Replace mode").is_some()).await;
+
+    harness.get_by_role(Role::MultilineTextInput).focus();
+    harness.key_press(eframe::egui::Key::Tab);
+    poll(&mut harness, |h| h.query_by_label("Insert mode").is_some()).await;
+}
