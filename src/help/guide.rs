@@ -112,7 +112,7 @@ fn topic_help(ui: &mut egui::Ui, topic: HelpTopic, tx: &Sender<Msg>) {
                 "Write ASCII art directly. Svgbob output is rendered live in the paired Render window.",
             );
             ui.label(
-                "This dedicated editor uses a block cursor and canvas-style arrows: Right and Down can extend ragged lines or add rows. Its Mode menu offers Insert (the default) and Replace; Replace currently retains Insert behavior while dedicated replacement bindings are developed.",
+                "This dedicated editor uses a block cursor and canvas-style arrows: Right and Down can extend ragged lines or add rows. Its Mode menu offers Insert (the default) and Replace; Replace overwrites each canvas cell as you type and then advances the block cursor.",
             );
             ui.label(
                 "It also keeps its own bindings: Enter does not carry indentation, and Tab/Cmd-Ctrl-R are available for Svgbob-specific bindings.",

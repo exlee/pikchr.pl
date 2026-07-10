@@ -94,6 +94,62 @@ impl SvgbobEditor {
         state.store(ui.ctx(), editor_id);
         content_changed
     }
+
+    fn replace_input(&self, ctx: &Context, ui: &Ui, editor_id: egui::Id) -> Option<ReplaceInput> {
+        if self.mode != SvgbobEditMode::Replace || !ui.memory(|memory| memory.has_focus(editor_id))
+        {
+            return None;
+        }
+        let range = egui::TextEdit::load_state(ctx, editor_id)?
+            .cursor
+            .char_range()?;
+        // Egui already has the correct semantics for replacing a selection:
+        // remove only the selected text, then insert the new text.
+        if !range.is_empty() {
+            return None;
+        }
+        let text =
+            ui.input(|input| {
+                let mut text = String::new();
+                for event in &input.events {
+                    match event {
+                        // TextEdit itself ignores Enter text events because it
+                        // receives a distinct Key::Enter event.
+                        egui::Event::Text(input) if input != "\n" && input != "\r" => {
+                            text.push_str(input);
+                        },
+                        egui::Event::Paste(input) => text.push_str(input),
+                        // IME maintains its own temporary selection. Let egui
+                        // own it until a dedicated IME-aware Replace path exists.
+                        egui::Event::Ime(_) => return None,
+                        egui::Event::Cut
+                        | egui::Event::Key {
+                            key:
+                                egui::Key::Backspace
+                                | egui::Key::Delete
+                                | egui::Key::Enter
+                                | egui::Key::Tab,
+                            pressed: true,
+                            ..
+                        } => return None,
+                        _ => {},
+                    }
+                }
+                (!text.is_empty()).then_some(text)
+            })?;
+
+        Some(ReplaceInput {
+            content: self.content.clone(),
+            range,
+            text,
+        })
+    }
+}
+
+struct ReplaceInput {
+    content: String,
+    range: egui::text::CCursorRange,
+    text: String,
 }
 
 #[derive(Clone, Copy)]
@@ -165,6 +221,49 @@ fn move_to_grid(content: &mut String, row: usize, column: usize) -> (bool, usize
     (changed, line_start_cursor + column)
 }
 
+fn byte_index(content: &str, character_index: usize) -> usize {
+    content
+        .char_indices()
+        .nth(character_index)
+        .map(|(byte_index, _)| byte_index)
+        .unwrap_or(content.len())
+}
+
+/// Apply text in Replace mode: each non-newline character overwrites one
+/// canvas cell, then the block cursor advances to the next cell.
+fn replace_text(
+    mut content: String,
+    range: egui::text::CCursorRange,
+    text: &str,
+) -> (String, usize) {
+    debug_assert!(
+        range.is_empty(),
+        "Replace mode handles selections in TextEdit"
+    );
+    let (mut row, mut column) = grid_position(&content, range.primary.index);
+    for character in text.chars() {
+        match character {
+            '\r' => {},
+            '\n' => {
+                row += 1;
+                column = 0;
+            },
+            character => {
+                // Materialize the target cell, not just its preceding cursor
+                // position, so replacing at an end-of-line grows the canvas.
+                let (_, after_cell) = move_to_grid(&mut content, row, column + 1);
+                let cell = after_cell - 1;
+                let start_byte = byte_index(&content, cell);
+                let end_byte = byte_index(&content, cell + 1);
+                content.replace_range(start_byte..end_byte, &character.to_string());
+                column += 1;
+            },
+        }
+    }
+    let (_, cursor) = move_to_grid(&mut content, row, column);
+    (content, cursor)
+}
+
 impl EditorWindow for SvgbobEditor {
     fn get_editor_window(&self) -> mini_window::EditorWindowView<'_> {
         mini_window::EditorWindowView {
@@ -207,11 +306,31 @@ impl GenericEditor for SvgbobEditor {
             ui.visuals_mut().text_cursor.stroke.color = egui::Color32::TRANSPARENT;
             ui.visuals_mut().text_cursor.blink = false;
 
-            let output = egui::TextEdit::multiline(&mut self.content)
+            let replace_input = self.replace_input(ui.ctx(), ui, editor_id);
+
+            let mut output = egui::TextEdit::multiline(&mut self.content)
                 .code_editor()
                 .desired_width(f32::INFINITY)
                 .id(editor_id)
                 .show(ui);
+
+            if let Some(replace_input) = replace_input {
+                let (content, cursor) = replace_text(
+                    replace_input.content,
+                    replace_input.range,
+                    &replace_input.text,
+                );
+                self.content = content;
+                if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), editor_id) {
+                    state
+                        .cursor
+                        .set_char_range(Some(egui::text::CCursorRange::one(
+                            egui::text::CCursor::new(cursor),
+                        )));
+                    state.store(ui.ctx(), editor_id);
+                }
+                output.response.mark_changed();
+            }
 
             if ui.memory(|memory| memory.has_focus(editor_id))
                 && let Some(cursor_range) = output.cursor_range
@@ -414,5 +533,25 @@ mod tests {
         assert!(!changed);
         assert_eq!(content, "ab\ncd");
         assert_eq!(grid_position(&content, cursor), (1, 1));
+    }
+
+    #[test]
+    fn replace_mode_overwrites_cells_and_advances() {
+        let range = egui::text::CCursorRange::one(egui::text::CCursor::new(1));
+
+        let (content, cursor) = replace_text("abcd".to_owned(), range, "XY");
+
+        assert_eq!(content, "aXYd");
+        assert_eq!(cursor, 3);
+    }
+
+    #[test]
+    fn replace_mode_grows_the_canvas_at_end_of_line() {
+        let range = egui::text::CCursorRange::one(egui::text::CCursor::new(2));
+
+        let (content, cursor) = replace_text("ab".to_owned(), range, "X");
+
+        assert_eq!(content, "abX");
+        assert_eq!(cursor, 3);
     }
 }
