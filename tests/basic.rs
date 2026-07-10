@@ -96,6 +96,25 @@ async fn test_new_editor() {
 }
 
 #[tokio::test]
+async fn test_output_type_icon_swaps_renderer() {
+    let mut harness = build_harness().await;
+    harness.run_steps(10);
+    harness.get_by_label("New").click_accesskit();
+    harness.run_ok();
+    harness.get_by_label("Pikchr").click_accesskit();
+    poll(&mut harness, |h| {
+        h.query_by_label("Pikchr output").is_some()
+    })
+    .await;
+
+    harness.get_by_label("Pikchr output").click_accesskit();
+    poll(&mut harness, |h| {
+        h.query_by_label("Svgbob output").is_some()
+    })
+    .await;
+}
+
+#[tokio::test]
 async fn test_new_svgbob_editor() {
     let mut harness: Harness = build_harness().await;
     harness.run_steps(10);

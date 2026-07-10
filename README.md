@@ -143,6 +143,7 @@ satellite projects **pikchr.pl** and **pikchr.pro** are licensed under the
 - **pikchr.pl / pikchr.pro** (`pikchr_pl`, `pikchr_pro`) — GPL-3.0-only. See each crate's `LICENSE`.
 - **trealla-wasm** (`trealla_wasm`) — MIT. See its `LICENSE`.
 - **Space Mono font** — SIL Open Font License 1.1. See [`assets/fonts/LICENSE.SpaceMono`](./assets/fonts/LICENSE.SpaceMono).
+- **Tabler Icons** — MIT. See [`assets/icons/LICENSE.Tabler`](./assets/icons/LICENSE.Tabler).
 - **Trealla Prolog** — MIT-style license. See [`crates/trealla_wasm/native/tpl/LICENSE`](./crates/trealla_wasm/native/tpl/LICENSE).
 - **Pikchr** — the author disclaims copyright (zero-clause BSD). See the header of [`crates/pikchr_pro/native/pikchr/pikchr.c`](./crates/pikchr_pro/native/pikchr/pikchr.c).
 - **Svgbob** — Apache-2.0, pinned to the [`exlee/svgbob` optimization revision](https://github.com/exlee/svgbob/tree/axk-optimization-work).

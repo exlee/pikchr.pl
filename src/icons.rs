@@ -3,6 +3,8 @@ use eframe::egui::{self, Ui};
 #[derive(Clone, Copy)]
 pub(crate) enum AppIcon {
     Render,
+    PikchrOutput,
+    SvgbobOutput,
     Export,
     Save,
     Help,
@@ -97,6 +99,8 @@ pub(crate) fn custom_icon(
 pub(crate) fn icon_image(icon: AppIcon, tint: egui::Color32) -> egui::Image<'static> {
     egui::Image::new(match icon {
         AppIcon::Render => egui::include_image!("../assets/icons/photo.svg"),
+        AppIcon::PikchrOutput => egui::include_image!("../assets/icons/circle-letter-p.svg"),
+        AppIcon::SvgbobOutput => egui::include_image!("../assets/icons/circle-letter-b.svg"),
         AppIcon::Delete => egui::include_image!("../assets/icons/trash.svg"),
         AppIcon::Export => egui::include_image!("../assets/icons/file-arrow-right.svg"),
         AppIcon::Save => egui::include_image!("../assets/icons/package-export.svg"),
@@ -124,6 +128,8 @@ impl AppIcon {
     fn alt_text(self) -> &'static str {
         match self {
             AppIcon::Render => "Render",
+            AppIcon::PikchrOutput => "Pikchr output",
+            AppIcon::SvgbobOutput => "Svgbob output",
             AppIcon::Export => "Export",
             AppIcon::Save => "Save",
             AppIcon::Help => "Help",

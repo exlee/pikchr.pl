@@ -165,27 +165,29 @@ pub trait MiniWindow: Send + Sync + Visible + Id + HasMenu + InnerWindow + Rende
                             if self.has_renderer() {
                                 if self.has_output_selector() {
                                     let output_type = self.output_type();
-                                    ui.menu_button("Output", |ui| {
-                                        for candidate in
-                                            [crate::OutputType::Pikchr, crate::OutputType::Svgbob]
-                                        {
-                                            if ui
-                                                .selectable_label(
-                                                    output_type == candidate,
-                                                    candidate.label(),
-                                                )
-                                                .clicked()
-                                            {
-                                                self.set_output_type(candidate);
-                                                let _ = tx.try_send(Msg::SetOutputType(
-                                                    ctx.clone(),
-                                                    self.get_id(),
-                                                    candidate,
-                                                ));
-                                                ui.close();
-                                            }
-                                        }
-                                    });
+                                    let (icon, next_output_type) = match output_type {
+                                        crate::OutputType::Pikchr => {
+                                            (AppIcon::PikchrOutput, crate::OutputType::Svgbob)
+                                        },
+                                        crate::OutputType::Svgbob => {
+                                            (AppIcon::SvgbobOutput, crate::OutputType::Pikchr)
+                                        },
+                                    };
+                                    if icon_button(ui, icon)
+                                        .on_hover_text(format!(
+                                            "{} output\nSwitch to {}",
+                                            output_type.label(),
+                                            next_output_type.label()
+                                        ))
+                                        .clicked()
+                                    {
+                                        self.set_output_type(next_output_type);
+                                        let _ = tx.try_send(Msg::SetOutputType(
+                                            ctx.clone(),
+                                            self.get_id(),
+                                            next_output_type,
+                                        ));
+                                    }
                                 }
                                 let render = self.render_enabled();
                                 if selectable_icon_button(ui, AppIcon::Render, render)
