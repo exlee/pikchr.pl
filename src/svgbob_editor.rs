@@ -32,6 +32,10 @@ pub struct SvgbobEditor {
     pub(crate) render: bool,
     #[serde(default)]
     mode: SvgbobEditMode,
+    #[serde(skip)]
+    rectangle_selection: bool,
+    #[serde(skip)]
+    inclusive_rectangle: bool,
 }
 
 fn default_render() -> bool {
@@ -52,6 +56,8 @@ impl SvgbobEditor {
             name: id.short_debug_format(),
             render: true,
             mode: SvgbobEditMode::default(),
+            rectangle_selection: false,
+            inclusive_rectangle: false,
         }
     }
 
@@ -70,6 +76,7 @@ impl SvgbobEditor {
         ui: &mut Ui,
         editor_id: egui::Id,
         direction: CanvasDirection,
+        extend_selection: bool,
     ) -> bool {
         let Some(mut state) = egui::TextEdit::load_state(ctx, editor_id) else {
             return false;
@@ -87,70 +94,203 @@ impl SvgbobEditor {
         };
         let (content_changed, target) = move_to_grid(&mut self.content, target_row, target_column);
 
-        state
-            .cursor
-            .set_char_range(Some(egui::text::CCursorRange::one(
-                egui::text::CCursor::new(target),
-            )));
+        let target = egui::text::CCursor::new(target);
+        let range = if extend_selection {
+            egui::text::CCursorRange {
+                primary: target,
+                secondary: range.secondary,
+                h_pos: None,
+            }
+        } else {
+            egui::text::CCursorRange::one(target)
+        };
+        state.cursor.set_char_range(Some(range));
         state.store(ui.ctx(), editor_id);
+        self.rectangle_selection = extend_selection;
+        self.inclusive_rectangle = extend_selection;
         content_changed
     }
 
-    fn replace_input(&self, ctx: &Context, ui: &Ui, editor_id: egui::Id) -> Option<ReplaceInput> {
+    fn handle_replace_input(&mut self, ctx: &Context, ui: &mut Ui, editor_id: egui::Id) -> bool {
         if self.mode != SvgbobEditMode::Replace || !ui.memory(|memory| memory.has_focus(editor_id))
         {
-            return None;
+            return false;
         }
-        let range = egui::TextEdit::load_state(ctx, editor_id)?
-            .cursor
-            .char_range()?;
+        let Some(mut state) = egui::TextEdit::load_state(ctx, editor_id) else {
+            return false;
+        };
+        let Some(range) = state.cursor.char_range() else {
+            return false;
+        };
         // Egui already has the correct semantics for replacing a selection:
         // remove only the selected text, then insert the new text.
         if !range.is_empty() {
-            return None;
+            return false;
         }
-        let text =
-            ui.input(|input| {
-                let mut text = String::new();
-                for event in &input.events {
-                    match event {
-                        // TextEdit itself ignores Enter text events because it
-                        // receives a distinct Key::Enter event.
-                        egui::Event::Text(input) if input != "\n" && input != "\r" => {
-                            text.push_str(input);
-                        },
-                        egui::Event::Paste(input) => text.push_str(input),
-                        // IME maintains its own temporary selection. Let egui
-                        // own it until a dedicated IME-aware Replace path exists.
-                        egui::Event::Ime(_) => return None,
-                        egui::Event::Cut
+        let Some(text) = ui.input_mut(|input| take_replacement_text(&mut input.events)) else {
+            return false;
+        };
+
+        let (content, cursor) = replace_text(self.content.clone(), range, &text);
+        let content_changed = content != self.content;
+        self.content = content;
+        state
+            .cursor
+            .set_char_range(Some(egui::text::CCursorRange::one(
+                egui::text::CCursor::new(cursor),
+            )));
+        state.store(ctx, editor_id);
+        content_changed
+    }
+
+    fn handle_replace_backspace(
+        &mut self,
+        ctx: &Context,
+        ui: &mut Ui,
+        editor_id: egui::Id,
+    ) -> bool {
+        if self.mode != SvgbobEditMode::Replace || !ui.memory(|memory| memory.has_focus(editor_id))
+        {
+            return false;
+        }
+        let Some(mut state) = egui::TextEdit::load_state(ctx, editor_id) else {
+            return false;
+        };
+        let Some(range) = state.cursor.char_range() else {
+            return false;
+        };
+        if !range.is_empty() {
+            return false;
+        }
+
+        let backspace = ui.input_mut(|input| {
+            let index = input.events.iter().position(|event| {
+                matches!(
+                    event,
+                    egui::Event::Key {
+                        key: egui::Key::Backspace,
+                        pressed: true,
+                        modifiers,
+                        ..
+                    } if modifiers.is_none()
+                )
+            })?;
+            input.events.remove(index);
+            Some(())
+        });
+        if backspace.is_none() {
+            return false;
+        }
+
+        let Some((content, cursor)) = replace_backspace(&self.content, range.primary.index) else {
+            return false;
+        };
+        let content_changed = content != self.content;
+        self.content = content;
+        state
+            .cursor
+            .set_char_range(Some(egui::text::CCursorRange::one(
+                egui::text::CCursor::new(cursor),
+            )));
+        state.store(ctx, editor_id);
+        content_changed
+    }
+
+    fn handle_rectangle_input(&mut self, ctx: &Context, ui: &mut Ui, editor_id: egui::Id) -> bool {
+        if !self.rectangle_selection || !ui.memory(|memory| memory.has_focus(editor_id)) {
+            return false;
+        }
+        let Some(mut state) = egui::TextEdit::load_state(ctx, editor_id) else {
+            return false;
+        };
+        let Some(range) = state.cursor.char_range() else {
+            return false;
+        };
+        let bounds = rectangle_bounds(&self.content, range, self.inclusive_rectangle);
+
+        let action = ui.input_mut(|input| {
+            let index = input.events.iter().position(|event| {
+                matches!(
+                    event,
+                    egui::Event::Copy
+                        | egui::Event::Cut
+                        | egui::Event::Paste(_)
+                        | egui::Event::Text(_)
                         | egui::Event::Key {
-                            key:
-                                egui::Key::Backspace
-                                | egui::Key::Delete
-                                | egui::Key::Enter
-                                | egui::Key::Tab,
+                            key: egui::Key::Backspace | egui::Key::Delete,
                             pressed: true,
                             ..
-                        } => return None,
-                        _ => {},
-                    }
-                }
-                (!text.is_empty()).then_some(text)
+                        }
+                )
             })?;
+            Some(input.events.remove(index))
+        });
+        let Some(action) = action else {
+            return false;
+        };
 
-        Some(ReplaceInput {
-            content: self.content.clone(),
-            range,
-            text,
-        })
+        if matches!(&action, egui::Event::Copy | egui::Event::Cut) {
+            ctx.copy_text(rectangle_text(&self.content, bounds));
+        }
+        let replacement = match action {
+            egui::Event::Copy => return false,
+            egui::Event::Paste(text) | egui::Event::Text(text) => text,
+            egui::Event::Cut | egui::Event::Key { .. } => String::new(),
+            _ => unreachable!("rectangle input was filtered above"),
+        };
+
+        let primary_row = grid_position(&self.content, range.primary.index).0;
+        let (content, cursor) = replace_rectangle(&self.content, bounds, primary_row, &replacement);
+        self.content = content;
+        self.rectangle_selection = false;
+        self.inclusive_rectangle = false;
+        state
+            .cursor
+            .set_char_range(Some(egui::text::CCursorRange::one(
+                egui::text::CCursor::new(cursor),
+            )));
+        state.store(ctx, editor_id);
+        true
     }
 }
 
-struct ReplaceInput {
-    content: String,
-    range: egui::text::CCursorRange,
-    text: String,
+fn take_replacement_text(events: &mut Vec<egui::Event>) -> Option<String> {
+    if events.iter().any(|event| {
+        matches!(
+            event,
+            egui::Event::Ime(_)
+                | egui::Event::Cut
+                | egui::Event::Key {
+                    key: egui::Key::Backspace
+                        | egui::Key::Delete
+                        | egui::Key::Enter
+                        | egui::Key::Tab,
+                    pressed: true,
+                    ..
+                }
+        )
+    }) {
+        return None;
+    }
+
+    let mut text = String::new();
+    let mut index = 0;
+    while index < events.len() {
+        match &events[index] {
+            // TextEdit itself ignores Enter text events because it receives a
+            // distinct Key::Enter event.
+            egui::Event::Text(input) if input != "\n" && input != "\r" => {
+                text.push_str(input);
+                events.remove(index);
+            },
+            egui::Event::Paste(input) => {
+                text.push_str(input);
+                events.remove(index);
+            },
+            _ => index += 1,
+        }
+    }
+    (!text.is_empty()).then_some(text)
 }
 
 #[derive(Clone, Copy)]
@@ -230,6 +370,152 @@ fn byte_index(content: &str, character_index: usize) -> usize {
         .unwrap_or(content.len())
 }
 
+fn line_bounds(content: &str) -> Vec<(usize, usize)> {
+    let mut bounds = Vec::new();
+    let mut start = 0;
+    let mut length = 0;
+    for character in content.chars() {
+        if character == '\n' {
+            bounds.push((start, length));
+            start += length + 1;
+            length = 0;
+        } else {
+            length += 1;
+        }
+    }
+    bounds.push((start, length));
+    bounds
+}
+
+fn rectangle_ranges(
+    content: &str,
+    range: egui::text::CCursorRange,
+    inclusive: bool,
+) -> Vec<egui::text::CCursorRange> {
+    let (first_row, last_row, first_column, last_column) =
+        rectangle_bounds(content, range, inclusive);
+    if first_column == last_column {
+        return Vec::new();
+    }
+
+    line_bounds(content)
+        .into_iter()
+        .enumerate()
+        .filter(|(row, _)| (first_row..=last_row).contains(row))
+        .filter_map(|(_, (start, length))| {
+            let first = start + first_column.min(length);
+            let last = start + last_column.min(length);
+            (first != last).then(|| {
+                egui::text::CCursorRange::two(
+                    egui::text::CCursor::new(first),
+                    egui::text::CCursor::new(last),
+                )
+            })
+        })
+        .collect()
+}
+
+fn rectangle_bounds(
+    content: &str,
+    range: egui::text::CCursorRange,
+    inclusive: bool,
+) -> (usize, usize, usize, usize) {
+    let (primary_row, primary_column) = grid_position(content, range.primary.index);
+    let (secondary_row, secondary_column) = grid_position(content, range.secondary.index);
+    let (first_row, last_row) = if primary_row <= secondary_row {
+        (primary_row, secondary_row)
+    } else {
+        (secondary_row, primary_row)
+    };
+    let (first_column, last_column) = if primary_column <= secondary_column {
+        (primary_column, secondary_column)
+    } else {
+        (secondary_column, primary_column)
+    };
+    (
+        first_row,
+        last_row,
+        first_column,
+        last_column + usize::from(inclusive),
+    )
+}
+
+fn rectangle_text(content: &str, bounds: (usize, usize, usize, usize)) -> String {
+    let (first_row, last_row, first_column, last_column) = bounds;
+    let rows = content
+        .split('\n')
+        .map(|line| line.chars().collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+    (first_row..=last_row)
+        .map(|row| {
+            (first_column..last_column)
+                .map(|column| {
+                    rows.get(row)
+                        .and_then(|line| line.get(column))
+                        .copied()
+                        .unwrap_or(' ')
+                })
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn replace_rectangle(
+    content: &str,
+    bounds: (usize, usize, usize, usize),
+    primary_row: usize,
+    replacement: &str,
+) -> (String, usize) {
+    let (first_row, last_row, first_column, last_column) = bounds;
+    let mut rows = content
+        .split('\n')
+        .map(|line| line.chars().collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+    rows.resize_with(last_row + 1, Vec::new);
+
+    let replacements = replacement
+        .split('\n')
+        .map(|line| line.chars().collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+    let repeat_replacement = replacements.len() == 1;
+    let mut primary_replacement_length = 0;
+    for (row, line) in rows
+        .iter_mut()
+        .enumerate()
+        .take(last_row + 1)
+        .skip(first_row)
+    {
+        line.resize(first_column.max(line.len()), ' ');
+        let end = last_column.min(line.len());
+        line.drain(first_column..end);
+        let replacement: &[char] = if repeat_replacement {
+            &replacements[0]
+        } else {
+            replacements
+                .get(row - first_row)
+                .map(Vec::as_slice)
+                .unwrap_or(&[])
+        };
+        if row == primary_row {
+            primary_replacement_length = replacement.len();
+        }
+        line.splice(first_column..first_column, replacement.iter().copied());
+    }
+
+    let mut content = rows
+        .into_iter()
+        .map(|row| row.into_iter().collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let (_, cursor) = move_to_grid(
+        &mut content,
+        primary_row,
+        first_column + primary_replacement_length,
+    );
+    (content, cursor)
+}
+
 /// Apply text in Replace mode: each non-newline character overwrites one
 /// canvas cell, then the block cursor advances to the next cell.
 fn replace_text(
@@ -263,6 +549,16 @@ fn replace_text(
     }
     let (_, cursor) = move_to_grid(&mut content, row, column);
     (content, cursor)
+}
+
+fn replace_backspace(content: &str, cursor: usize) -> Option<(String, usize)> {
+    let (row, column) = grid_position(content, cursor);
+    let target_column = column.checked_sub(1)?;
+    let mut content = content.to_owned();
+    let (_, target) = move_to_grid(&mut content, row, target_column);
+    let range = egui::text::CCursorRange::one(egui::text::CCursor::new(target));
+    let (content, _) = replace_text(content, range, " ");
+    Some((content, target))
 }
 
 impl EditorWindow for SvgbobEditor {
@@ -311,7 +607,17 @@ impl GenericEditor for SvgbobEditor {
             ui.visuals_mut().text_cursor.stroke.color = egui::Color32::TRANSPARENT;
             ui.visuals_mut().text_cursor.blink = false;
 
-            let replace_input = self.replace_input(ui.ctx(), ui, editor_id);
+            // TextEdit owns pointer interaction and cursor state, but its
+            // built-in selection paint is linear. Suppress that paint; the
+            // canvas selection is painted row-by-row below.
+            let selection_visuals = ui.visuals().clone();
+            ui.visuals_mut().selection.bg_fill = egui::Color32::TRANSPARENT;
+            ui.visuals_mut().selection.stroke.color = ui.visuals().text_color();
+
+            let ctx = ui.ctx().clone();
+            let rectangle_changed = self.handle_rectangle_input(&ctx, ui, editor_id);
+            let backspace_changed = self.handle_replace_backspace(&ctx, ui, editor_id);
+            let replace_changed = self.handle_replace_input(&ctx, ui, editor_id);
 
             let mut output = egui::TextEdit::multiline(&mut self.content)
                 .code_editor()
@@ -319,22 +625,82 @@ impl GenericEditor for SvgbobEditor {
                 .id(editor_id)
                 .show(ui);
 
-            if let Some(replace_input) = replace_input {
-                let (content, cursor) = replace_text(
-                    replace_input.content,
-                    replace_input.range,
-                    &replace_input.text,
-                );
-                self.content = content;
-                if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), editor_id) {
-                    state
-                        .cursor
-                        .set_char_range(Some(egui::text::CCursorRange::one(
-                            egui::text::CCursor::new(cursor),
-                        )));
-                    state.store(ui.ctx(), editor_id);
-                }
+            if rectangle_changed || backspace_changed || replace_changed {
                 output.response.mark_changed();
+            }
+
+            if output.response.dragged() {
+                self.rectangle_selection = output
+                    .cursor_range
+                    .is_some_and(|cursor_range| !cursor_range.is_empty());
+                self.inclusive_rectangle = false;
+            } else if output.response.clicked() {
+                self.rectangle_selection = false;
+                self.inclusive_rectangle = false;
+            }
+
+            if ui.input(|input| input.key_pressed(egui::Key::A) && input.modifiers.command) {
+                self.rectangle_selection = false;
+                self.inclusive_rectangle = false;
+            }
+
+            ui.visuals_mut().selection = selection_visuals.selection;
+
+            if let Some(cursor_range) = output.cursor_range
+                && !cursor_range.is_empty()
+            {
+                let mut selected_galley = output.galley.clone();
+                if self.rectangle_selection {
+                    for row_range in
+                        rectangle_ranges(&self.content, cursor_range, self.inclusive_rectangle)
+                    {
+                        egui::text_selection::visuals::paint_text_selection(
+                            &mut selected_galley,
+                            ui.visuals(),
+                            &row_range,
+                            None,
+                        );
+                    }
+
+                    let (first_row, last_row, first_column, last_column) =
+                        rectangle_bounds(&self.content, cursor_range, self.inclusive_rectangle);
+                    let font_id = egui::TextStyle::Monospace.resolve(ui.style());
+                    let cell_width = ui.fonts_mut(|fonts| fonts.glyph_width(&font_id, ' '));
+                    let lines = line_bounds(&self.content);
+                    let painter = ui.painter_at(output.text_clip_rect);
+                    for row in first_row..=last_row {
+                        let Some(placed_row) = output.galley.rows.get(row) else {
+                            continue;
+                        };
+                        let line_length = lines.get(row).map_or(0, |(_, length)| *length);
+                        let blank_start = first_column.max(line_length);
+                        if blank_start < last_column {
+                            let rect = egui::Rect::from_min_max(
+                                output.galley_pos
+                                    + egui::vec2(blank_start as f32 * cell_width, placed_row.pos.y),
+                                output.galley_pos
+                                    + egui::vec2(
+                                        last_column as f32 * cell_width,
+                                        placed_row.pos.y + placed_row.size.y,
+                                    ),
+                            );
+                            painter.rect_filled(rect, 0.0, ui.visuals().selection.bg_fill);
+                        }
+                    }
+                } else {
+                    egui::text_selection::visuals::paint_text_selection(
+                        &mut selected_galley,
+                        ui.visuals(),
+                        &cursor_range,
+                        None,
+                    );
+                }
+                ui.painter_at(output.text_clip_rect).galley(
+                    output.galley_pos,
+                    selected_galley.clone(),
+                    ui.visuals().text_color(),
+                );
+                output.galley = selected_galley;
             }
 
             if ui.memory(|memory| memory.has_focus(editor_id))
@@ -396,7 +762,8 @@ impl GenericEditor for SvgbobEditor {
         }
 
         let direction = ui.input(|input| {
-            if input.modifiers.any() {
+            let extend_selection = input.modifiers == egui::Modifiers::SHIFT;
+            if !input.modifiers.is_none() && !extend_selection {
                 return None;
             }
             [
@@ -406,16 +773,27 @@ impl GenericEditor for SvgbobEditor {
                 (egui::Key::ArrowRight, CanvasDirection::Right),
             ]
             .into_iter()
-            .find_map(|(key, direction)| input.key_pressed(key).then_some((key, direction)))
+            .find_map(|(key, direction)| {
+                input
+                    .key_pressed(key)
+                    .then_some((key, direction, extend_selection))
+            })
         });
 
-        let Some((key, direction)) = direction else {
+        let Some((key, direction, extend_selection)) = direction else {
             return false;
         };
         ui.input_mut(|input| {
-            input.consume_key(egui::Modifiers::NONE, key);
+            input.consume_key(
+                if extend_selection {
+                    egui::Modifiers::SHIFT
+                } else {
+                    egui::Modifiers::NONE
+                },
+                key,
+            );
         });
-        self.move_canvas_cursor(ctx, ui, editor_id, direction)
+        self.move_canvas_cursor(ctx, ui, editor_id, direction, extend_selection)
     }
 
     // Cmd/Ctrl-R is intentionally not reserved here; future Svgbob-specific
@@ -552,6 +930,72 @@ mod tests {
     }
 
     #[test]
+    fn rectangle_selection_uses_the_same_columns_on_each_row() {
+        let content = "abcd\nefgh\nijkl";
+        let range = egui::text::CCursorRange {
+            primary: egui::text::CCursor::new(13),
+            secondary: egui::text::CCursor::new(1),
+            h_pos: None,
+        };
+
+        let ranges = rectangle_ranges(content, range, false);
+        let selected = ranges
+            .iter()
+            .map(|range| range.slice_str(content))
+            .collect::<Vec<_>>();
+
+        assert_eq!(selected, ["bc", "fg", "jk"]);
+    }
+
+    #[test]
+    fn zero_width_rectangle_selects_no_text() {
+        let content = "abcd\nefgh";
+        let range = egui::text::CCursorRange {
+            primary: egui::text::CCursor::new(7),
+            secondary: egui::text::CCursor::new(2),
+            h_pos: None,
+        };
+
+        assert!(rectangle_ranges(content, range, false).is_empty());
+    }
+
+    #[test]
+    fn shift_right_selects_the_cursor_and_destination_cells() {
+        let content = "abcd";
+        let range = egui::text::CCursorRange {
+            primary: egui::text::CCursor::new(2),
+            secondary: egui::text::CCursor::new(1),
+            h_pos: None,
+        };
+
+        let ranges = rectangle_ranges(content, range, true);
+
+        assert_eq!(ranges.len(), 1);
+        assert_eq!(ranges[0].slice_str(content), "bc");
+    }
+
+    #[test]
+    fn rectangle_copy_preserves_the_canvas_shape() {
+        assert_eq!(rectangle_text("abcd\nef\nijkl", (0, 2, 1, 3)), "bc\nf \njk");
+    }
+
+    #[test]
+    fn typing_replaces_each_selected_row() {
+        let (content, cursor) = replace_rectangle("abcd\nefgh\nijkl", (0, 2, 1, 3), 2, "X");
+
+        assert_eq!(content, "aXd\neXh\niXl");
+        assert_eq!(grid_position(&content, cursor), (2, 2));
+    }
+
+    #[test]
+    fn multiline_paste_maps_lines_into_the_rectangle() {
+        let (content, cursor) = replace_rectangle("abcd\nefgh\nijkl", (0, 2, 1, 3), 2, "XY\nZ\n");
+
+        assert_eq!(content, "aXYd\neZh\nil");
+        assert_eq!(grid_position(&content, cursor), (2, 1));
+    }
+
+    #[test]
     fn replace_mode_overwrites_cells_and_advances() {
         let range = egui::text::CCursorRange::one(egui::text::CCursor::new(1));
 
@@ -559,6 +1003,27 @@ mod tests {
 
         assert_eq!(content, "aXYd");
         assert_eq!(cursor, 3);
+    }
+
+    #[test]
+    fn replace_mode_consumes_text_before_text_edit() {
+        let mut events = vec![egui::Event::Text("XY".to_owned())];
+
+        assert_eq!(take_replacement_text(&mut events).as_deref(), Some("XY"));
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn replace_mode_treats_backspace_as_space() {
+        let (content, cursor) = replace_backspace("abcd", 2).unwrap();
+
+        assert_eq!(content, "a cd");
+        assert_eq!(cursor, 1);
+    }
+
+    #[test]
+    fn replace_mode_backspace_stops_at_start_of_line() {
+        assert!(replace_backspace("ab\ncd", 3).is_none());
     }
 
     #[test]
