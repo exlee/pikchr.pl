@@ -252,6 +252,40 @@ impl SvgbobEditor {
         state.store(ctx, editor_id);
         true
     }
+
+    fn handle_column_paste(&mut self, ctx: &Context, ui: &mut Ui, editor_id: egui::Id) -> bool {
+        if self.rectangle_selection || !ui.memory(|memory| memory.has_focus(editor_id)) {
+            return false;
+        }
+        let Some(mut state) = egui::TextEdit::load_state(ctx, editor_id) else {
+            return false;
+        };
+        let Some(range) = state.cursor.char_range().filter(|range| range.is_empty()) else {
+            return false;
+        };
+        let paste = ui.input_mut(|input| {
+            let index = input.events.iter().position(
+                |event| matches!(event, egui::Event::Paste(text) if text.contains(['\n', '\r'])),
+            )?;
+            match input.events.remove(index) {
+                egui::Event::Paste(text) => Some(text),
+                _ => unreachable!("column paste was filtered above"),
+            }
+        });
+        let Some(paste) = paste else {
+            return false;
+        };
+
+        let (content, cursor) = paste_at_column(&self.content, range.primary.index, &paste);
+        self.content = content;
+        state
+            .cursor
+            .set_char_range(Some(egui::text::CCursorRange::one(
+                egui::text::CCursor::new(cursor),
+            )));
+        state.store(ctx, editor_id);
+        true
+    }
 }
 
 fn take_replacement_text(events: &mut Vec<egui::Event>) -> Option<String> {
@@ -472,7 +506,9 @@ fn replace_rectangle(
         .split('\n')
         .map(|line| line.chars().collect::<Vec<_>>())
         .collect::<Vec<_>>();
-    rows.resize_with(last_row + 1, Vec::new);
+    if rows.len() <= last_row {
+        rows.resize_with(last_row + 1, Vec::new);
+    }
 
     let replacements = replacement
         .split('\n')
@@ -514,6 +550,13 @@ fn replace_rectangle(
         first_column + primary_replacement_length,
     );
     (content, cursor)
+}
+
+fn paste_at_column(content: &str, cursor: usize, text: &str) -> (String, usize) {
+    let text = text.replace("\r\n", "\n").replace('\r', "\n");
+    let (row, column) = grid_position(content, cursor);
+    let last_row = row + text.split('\n').count() - 1;
+    replace_rectangle(content, (row, last_row, column, column), last_row, &text)
 }
 
 /// Apply text in Replace mode: each non-newline character overwrites one
@@ -616,6 +659,7 @@ impl GenericEditor for SvgbobEditor {
 
             let ctx = ui.ctx().clone();
             let rectangle_changed = self.handle_rectangle_input(&ctx, ui, editor_id);
+            let paste_changed = self.handle_column_paste(&ctx, ui, editor_id);
             let backspace_changed = self.handle_replace_backspace(&ctx, ui, editor_id);
             let replace_changed = self.handle_replace_input(&ctx, ui, editor_id);
 
@@ -625,7 +669,7 @@ impl GenericEditor for SvgbobEditor {
                 .id(editor_id)
                 .show(ui);
 
-            if rectangle_changed || backspace_changed || replace_changed {
+            if rectangle_changed || paste_changed || backspace_changed || replace_changed {
                 output.response.mark_changed();
             }
 
@@ -988,11 +1032,28 @@ mod tests {
     }
 
     #[test]
+    fn rectangle_edit_preserves_rows_after_the_selection() {
+        let content = "line 1\nline 2\nline 3\nline 4\nline 5";
+
+        let (content, _) = replace_rectangle(content, (2, 2, 0, 2), 2, "");
+
+        assert_eq!(content, "line 1\nline 2\nne 3\nline 4\nline 5");
+    }
+
+    #[test]
     fn multiline_paste_maps_lines_into_the_rectangle() {
         let (content, cursor) = replace_rectangle("abcd\nefgh\nijkl", (0, 2, 1, 3), 2, "XY\nZ\n");
 
         assert_eq!(content, "aXYd\neZh\nil");
         assert_eq!(grid_position(&content, cursor), (2, 1));
+    }
+
+    #[test]
+    fn multiline_paste_at_cursor_inserts_each_line_at_the_same_column() {
+        let (content, cursor) = paste_at_column("abcd\nefgh", 2, "X\r\nYZ");
+
+        assert_eq!(content, "abXcd\nefYZgh");
+        assert_eq!(grid_position(&content, cursor), (1, 4));
     }
 
     #[test]
