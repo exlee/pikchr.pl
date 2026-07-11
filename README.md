@@ -11,8 +11,8 @@ place. It is built for users who prefer diagrams to remain inspectable as text.
 A diagram may be written **directly**, **assembled** from named fragments, or
 **generated** from a small program — Prolog DCGs, Tcl, or Ruby. Each diagram
 editor chooses Pikchr or Svgbob as its Output Type; Pikchr remains the default.
-Rendered output can be exported as SVG, PNG, transparent PNG, or copied as
-generated source.
+SVG, PNG, transparent PNG, and generated source can each be saved to a file or
+copied to the clipboard.
 
 ## Screenshots
 
@@ -23,7 +23,7 @@ generated source.
 *Ruby output used to generate Pikchr.*
 
 ![Export menu](./assets/images/export.png)
-*Export menu: SVG, PNG, transparent PNG, and Pikchr source.*
+*Export menu: file and clipboard actions for SVG, PNG, transparent PNG, and Pikchr source.*
 
 ## Features
 
@@ -54,7 +54,7 @@ generated source.
 1. **Write** — create the diagram in Pikchr or Svgbob, or generate source when the structure is repetitive.
 2. **Inspect** — keep source and rendered diagram visible at the same time.
 3. **Reuse** — move repeated shapes, labels, or layout fragments into named editors.
-4. **Export** — produce an image or copy the generated source when the diagram is ready.
+4. **Export** — save or copy an image or the generated source when the diagram is ready.
 
 ## Installation
 

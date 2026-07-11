@@ -81,6 +81,33 @@ fn install_diagram_texture(
     Some(())
 }
 
+fn generated_source(state: &Arc<RwLock<AppState>>, id: egui::Id) -> Option<String> {
+    let content = state
+        .read()
+        .windows
+        .get(&id)?
+        .as_generated_content()?
+        .get_generated_content();
+
+    match crate::replace_content(&mut state.write(), id, &content) {
+        Ok(content) => Some(content),
+        Err(err) => {
+            state.write().log.push(err);
+            None
+        },
+    }
+}
+
+fn rendered_svg(state: &Arc<RwLock<AppState>>, id: egui::Id) -> Option<String> {
+    state
+        .write()
+        .windows
+        .get_mut(&id)?
+        .as_svg_window()?
+        .svg_string
+        .clone()
+}
+
 fn clean_library_path(path: String) -> String {
     path.split('/')
         .map(str::trim)
@@ -759,21 +786,37 @@ async fn handle_event(
             let _ = crate::image::write_svg(file, svg);
             local_queue.push_back(Msg::PopModal);
         },
-        Msg::ExportSourceToClipboard(ctx, id) => {
-            let content = state
-                .read()
-                .windows
-                .get(&id)?
-                .as_generated_content()?
-                .get_generated_content();
-
-            let content = match crate::replace_content(&mut state.write(), id, &content) {
-                Ok(content) => content,
-                Err(err) => {
-                    state.write().log.push(err);
-                    return Some(());
-                },
-            };
+        Msg::Export(id, file, crate::ExportType::Source(_), _visuals) => {
+            let content = generated_source(&state, id)?;
+            if let Err(err) = std::fs::write(file, content) {
+                state
+                    .write()
+                    .log
+                    .push(format!("Could not export generated source: {err}"));
+            }
+            local_queue.push_back(Msg::PopModal);
+        },
+        Msg::CopyExport(ctx, svg_id, crate::ExportType::Svg, _visuals) => {
+            let svg = rendered_svg(&state, svg_id)?;
+            ctx.copy_text(svg);
+        },
+        Msg::CopyExport(ctx, svg_id, crate::ExportType::Png, visuals) => {
+            let background = state.read().diagram_background.resolve_for_export(&visuals);
+            let svg = rendered_svg(&state, svg_id)?;
+            let image = crate::image::render_svg_to_image(&svg, 2.0, background)?;
+            ctx.copy_image(image);
+        },
+        Msg::CopyExport(ctx, svg_id, crate::ExportType::PngTransparent, _visuals) => {
+            let svg = rendered_svg(&state, svg_id)?;
+            let image = crate::image::render_svg_to_image(
+                &svg,
+                2.0,
+                crate::image::RenderBackground::Transparent,
+            )?;
+            ctx.copy_image(image);
+        },
+        Msg::CopyExport(ctx, id, crate::ExportType::Source(_), _visuals) => {
+            let content = generated_source(&state, id)?;
             ctx.copy_text(content);
         },
         Msg::PopModal => {

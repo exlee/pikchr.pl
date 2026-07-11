@@ -87,43 +87,73 @@ impl HasMenu for SvgWindow {
     fn menu(&self, ui: &mut egui::Ui, tx: tokio::sync::mpsc::Sender<Msg>) {
         ui.menu_image_button(
             icon_image(AppIcon::Export, ui.visuals().text_color()),
-            |ui| {
-                if ui.button("SVG").clicked() {
-                    let _ = tx.try_send(Msg::ExportModal(
-                        self.id,
-                        self.get_title(),
-                        crate::ExportType::Svg,
-                    ));
-                    ui.close();
-                }
-                if ui.button("PNG").clicked() {
-                    let _ = tx.try_send(Msg::ExportModal(
-                        self.id,
-                        self.get_title(),
-                        crate::ExportType::Png,
-                    ));
-                    ui.close();
-                }
-                if ui.button("Transparent PNG").clicked() {
-                    let _ = tx.try_send(Msg::ExportModal(
-                        self.id,
-                        self.get_title(),
-                        crate::ExportType::PngTransparent,
-                    ));
-                    ui.close();
-                }
-                if ui
-                    .button(format!("{} Source to Clipboard", self.output_type.label()))
-                    .clicked()
-                {
-                    let _ = tx.try_send(Msg::ExportSourceToClipboard(
-                        ui.ctx().to_owned(),
-                        self.owner_id,
-                    ));
-                }
-            },
+            |ui| export_menu(ui, &tx, self),
         );
     }
+}
+
+fn export_menu(ui: &mut egui::Ui, tx: &tokio::sync::mpsc::Sender<Msg>, window: &SvgWindow) {
+    egui::Grid::new(("copy_menu", window.id))
+        .num_columns(3)
+        .show(ui, |ui| {
+            export_row(
+                ui,
+                tx,
+                "SVG",
+                window.id,
+                window.get_title(),
+                crate::ExportType::Svg,
+            );
+            export_row(
+                ui,
+                tx,
+                "PNG",
+                window.id,
+                window.get_title(),
+                crate::ExportType::Png,
+            );
+            export_row(
+                ui,
+                tx,
+                "Transparent PNG",
+                window.id,
+                window.get_title(),
+                crate::ExportType::PngTransparent,
+            );
+            export_row(
+                ui,
+                tx,
+                &format!("{} Source", window.output_type.label()),
+                window.owner_id,
+                window.get_title(),
+                crate::ExportType::Source(window.output_type),
+            );
+        });
+}
+
+fn export_row(
+    ui: &mut egui::Ui,
+    tx: &tokio::sync::mpsc::Sender<Msg>,
+    label: &str,
+    id: egui::Id,
+    file_name: String,
+    export_type: crate::ExportType,
+) {
+    ui.label(label);
+    if ui.small_button("FILE").clicked() {
+        let _ = tx.try_send(Msg::ExportModal(id, file_name, export_type));
+        ui.close();
+    }
+    if ui.small_button("COPY").clicked() {
+        let _ = tx.try_send(Msg::CopyExport(
+            ui.ctx().clone(),
+            id,
+            export_type,
+            Box::new(ui.visuals().clone()),
+        ));
+        ui.close();
+    }
+    ui.end_row();
 }
 
 impl crate::mini_window::RenderToggle for SvgWindow {}
@@ -259,6 +289,8 @@ setter_getter_for_trait! { (name => String | name.clone() => String) for SvgWind
 mod tests {
     use super::*;
 
+    use egui_kittest::{Harness, kittest::Queryable as _};
+
     #[test]
     fn closing_render_window_turns_off_owner_rendering() {
         let owner_id = egui::Id::new("owner");
@@ -280,5 +312,18 @@ mod tests {
         window.set_visible(false);
 
         assert!(window.visible());
+    }
+
+    #[test]
+    fn export_menu_has_file_and_copy_actions_for_every_format() {
+        let window = SvgWindow::new(egui::Id::new("render"), egui::Id::new("owner"));
+        let (tx, _rx) = tokio::sync::mpsc::channel(8);
+        let harness = Harness::new_ui(move |ui| export_menu(ui, &tx, &window));
+
+        for label in ["SVG", "PNG", "Transparent PNG", "Pikchr Source"] {
+            assert!(harness.query_by_label(label).is_some(), "missing {label}");
+        }
+        assert_eq!(harness.query_all_by_label("FILE").count(), 4);
+        assert_eq!(harness.query_all_by_label("COPY").count(), 4);
     }
 }

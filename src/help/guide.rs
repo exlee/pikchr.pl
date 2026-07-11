@@ -214,7 +214,7 @@ fn topic_help(ui: &mut egui::Ui, topic: HelpTopic, tx: &Sender<Msg>) {
             feature(
                 ui,
                 "Export",
-                "Save SVG, PNG, or transparent PNG; or copy generated source.",
+                "Save or copy SVG, PNG, transparent PNG, or generated source.",
             );
             feature(
                 ui,
@@ -298,7 +298,7 @@ fn overview(ui: &mut egui::Ui, tx: &Sender<Msg>) {
     feature(
         ui,
         "Export",
-        "Save SVG, PNG, transparent PNG, or generated source.",
+        "Save or copy SVG, PNG, transparent PNG, or generated source.",
     );
     feature(
         ui,

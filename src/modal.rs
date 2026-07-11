@@ -35,6 +35,7 @@ impl ExportModal {
             ExportType::Svg => "svg",
             ExportType::Png => "png",
             ExportType::PngTransparent => "png",
+            ExportType::Source(output_type) => output_type.source_extension(),
         };
         let file_cleaned: String = file
             .chars()
@@ -58,9 +59,12 @@ impl Modal for ExportModal {
             //.backdrop_color(Color32::BLACK)
             .show(ctx, |ui| {
                 let title = match self.export_type {
-                    ExportType::Svg => "Export as SVG",
-                    ExportType::Png => "Export as PNG",
-                    ExportType::PngTransparent => "Export as transparent PNG",
+                    ExportType::Svg => "Export as SVG".to_owned(),
+                    ExportType::Png => "Export as PNG".to_owned(),
+                    ExportType::PngTransparent => "Export as transparent PNG".to_owned(),
+                    ExportType::Source(output_type) => {
+                        format!("Export {} source", output_type.label())
+                    },
                 };
                 ui.set_min_size(Vec2::from((400.0, 50.0)));
                 ui.heading(title);
@@ -165,6 +169,26 @@ where
                 };
             });
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn source_exports_use_output_specific_extensions() {
+        let pikchr = ExportModal::build_destination(
+            "Render - Example",
+            &ExportType::Source(crate::OutputType::Pikchr),
+        );
+        let svgbob = ExportModal::build_destination(
+            "Render - Example",
+            &ExportType::Source(crate::OutputType::Svgbob),
+        );
+
+        assert!(pikchr.ends_with("Render_Example.pikchr"));
+        assert!(svgbob.ends_with("Render_Example.txt"));
     }
 }
 

@@ -50,6 +50,7 @@ pub enum ExportType {
     Svg,
     Png,
     PngTransparent,
+    Source(OutputType),
 }
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 pub enum Msg {
@@ -67,7 +68,12 @@ pub enum Msg {
     // Exporting
     ExportModal(egui::Id, String, ExportType),
     Export(egui::Id, String, ExportType, Box<egui::Visuals>),
-    ExportSourceToClipboard(#[serde(skip)] Context, egui::Id),
+    CopyExport(
+        #[serde(skip)] Context,
+        egui::Id,
+        ExportType,
+        Box<egui::Visuals>,
+    ),
 
     // Editor Menu
     FontSizeModal(egui::Id),
@@ -197,6 +203,13 @@ impl OutputType {
         match self {
             Self::Pikchr => "Pikchr",
             Self::Svgbob => "Svgbob",
+        }
+    }
+
+    pub fn source_extension(self) -> &'static str {
+        match self {
+            Self::Pikchr => "pikchr",
+            Self::Svgbob => "txt",
         }
     }
 }
