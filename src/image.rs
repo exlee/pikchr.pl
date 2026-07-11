@@ -48,14 +48,8 @@ pub fn render_svg_to_image(
     scale: f32,
     background: RenderBackground,
 ) -> Option<egui::ColorImage> {
-    let mut db = fontdb::Database::new();
-    db.load_font_data(SPACE_MONO_BYTES.to_vec());
-    db.load_font_data(NOTO_SANS_BYTES.to_vec());
-    db.load_font_data(NOTO_SANS_SYMBOLS2_BYTES.to_vec());
-
-    // 2. Parse the SVG
     let xml_opt = usvg::Options {
-        fontdb: Arc::new(db),
+        fontdb: font_database(),
         ..Default::default()
     };
     let svg_content = sanitize_svg_for_usvg(svg_content);
@@ -96,6 +90,19 @@ pub fn render_svg_to_image(
         [width as usize, height as usize],
         pixmap.data(),
     ))
+}
+
+fn font_database() -> Arc<fontdb::Database> {
+    static DATABASE: OnceLock<Arc<fontdb::Database>> = OnceLock::new();
+    DATABASE
+        .get_or_init(|| {
+            let mut database = fontdb::Database::new();
+            database.load_font_data(SPACE_MONO_BYTES.to_vec());
+            database.load_font_data(NOTO_SANS_BYTES.to_vec());
+            database.load_font_data(NOTO_SANS_SYMBOLS2_BYTES.to_vec());
+            Arc::new(database)
+        })
+        .clone()
 }
 
 pub fn sanitize_svg_for_usvg(svg: &str) -> std::borrow::Cow<'_, str> {

@@ -367,7 +367,7 @@ impl DiagramIDE {
             }
         }
 
-        if self.state.clone().read().window_states.log {
+        if self.state.read().window_states.log {
             egui::Window::new("Log")
                 .resizable(true)
                 .default_size((200.0, 200.0))
@@ -376,7 +376,7 @@ impl DiagramIDE {
                         .auto_shrink([false, false]) // Key: Stop it from shrinking to fit content!
                         .stick_to_bottom(true) // Optional: Auto-scroll to new entries
                         .show(ui, |ui| {
-                            for entry in &self.state.clone().read().log {
+                            for entry in &self.state.read().log {
                                 ui.label(entry);
                             }
                         });

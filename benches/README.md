@@ -36,3 +36,9 @@ measurement. Tcl was unavailable in the benchmark process.
 | SVG raster 640x360 | 212.250 us | 223.500 us | 0.026 |
 | Tcl edit preview | 388.916 us | 416.667 us | 0.035 |
 | Ruby edit preview | 16.667 us | 26.458 us | 0.272 |
+
+## Retained optimizations
+
+| Change | Baseline median / p95 | After median / p95 | Result |
+| --- | ---: | ---: | --- |
+| Reuse the SVG font database | 212.250 / 223.500 us | 183.958 / 194.291 us | 13.3% median and 13.1% p95 faster |

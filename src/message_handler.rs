@@ -6,7 +6,7 @@ use std::{
 
 use eframe::egui;
 use parking_lot::RwLock;
-use slog::{Logger, Serde, debug, o};
+use slog::{Logger, debug, o};
 use tokio::sync::mpsc::Sender;
 use tokio_stream::StreamExt as _;
 use tokio_util::time::{DelayQueue, delay_queue::Key as DelayKey};
@@ -262,7 +262,7 @@ async fn handle_event(
     state: Arc<RwLock<AppState>>,
     local_queue: &mut VecDeque<Msg>,
 ) -> Option<()> {
-    debug!(logger, "handle msg"; "msg" => Serde(msg.clone()));
+    debug!(logger, "handle msg"; "msg" => message_name(&msg));
     match msg {
         Msg::Debounce(..) => unreachable!(),
         Msg::ShowHelp(topic) => {
@@ -634,11 +634,18 @@ async fn handle_event(
                 },
             }
 
-            let deps = state.read().editor_deps.clone();
+            let deps = state
+                .read()
+                .editor_deps
+                .get(&id)
+                .into_iter()
+                .flatten()
+                .copied()
+                .collect::<Vec<_>>();
             debug!(logger, "Dependency handling"; "id" => id.short_debug_format(),
-                "deps" => Serde(deps));
-            for dep in state.read().editor_deps.get(&id).unwrap_or(&HashSet::new()) {
-                local_queue.push_back(Msg::Refresh(ctx.clone(), *dep))
+                "dependency_count" => deps.len());
+            for dep in deps {
+                local_queue.push_back(Msg::Refresh(ctx.clone(), dep))
             }
         },
         Msg::UpdateMruby(ctx, id, content) => {
@@ -1193,6 +1200,67 @@ async fn handle_event(
         },
     };
     Some(())
+}
+
+fn message_name(msg: &Msg) -> &'static str {
+    match msg {
+        Msg::Batch(..) => "Batch",
+        Msg::Debounce(..) => "Debounce",
+        Msg::PopModal => "PopModal",
+        Msg::CheckDependencies => "CheckDependencies",
+        Msg::ShowHelp(..) => "ShowHelp",
+        Msg::SelectTheme(..) => "SelectTheme",
+        Msg::ReloadThemes(..) => "ReloadThemes",
+        Msg::OpenThemesFolder => "OpenThemesFolder",
+        Msg::SetDiagramBackground(..) => "SetDiagramBackground",
+        Msg::ExportModal(..) => "ExportModal",
+        Msg::Export(..) => "Export",
+        Msg::CopyExport(..) => "CopyExport",
+        Msg::FontSizeModal(..) => "FontSizeModal",
+        Msg::SaveEditorToLibraryRequest(..) => "SaveEditorToLibraryRequest",
+        Msg::SaveEditorToLibrary { .. } => "SaveEditorToLibrary",
+        Msg::ExportEditorLibraryEntry(..) => "ExportEditorLibraryEntry",
+        Msg::RequestRename(..) => "RequestRename",
+        Msg::RenameWindow(..) => "RenameWindow",
+        Msg::RequestRedraw(..) => "RequestRedraw",
+        Msg::UpdateRender(..) => "UpdateRender",
+        Msg::UpdateProlog(..) => "UpdateProlog",
+        Msg::UpdateTcl(..) => "UpdateTcl",
+        Msg::UpdateMruby(..) => "UpdateMruby",
+        Msg::UpdatePlainText(..) => "UpdatePlainText",
+        Msg::ResetError(..) => "ResetError",
+        Msg::UpdateContent(..) => "UpdateContent",
+        Msg::UpdateGeneratedContent(..) => "UpdateGeneratedContent",
+        Msg::SetRenderEnabled(..) => "SetRenderEnabled",
+        Msg::SetOutputType(..) => "SetOutputType",
+        Msg::SetSvgbobEditMode(..) => "SetSvgbobEditMode",
+        Msg::DeleteWindow(..) => "DeleteWindow",
+        Msg::ToggleWindow(..) => "ToggleWindow",
+        Msg::ToggleWindowById(..) => "ToggleWindowById",
+        Msg::NewWindow(..) => "NewWindow",
+        Msg::RecreateSvg(..) => "RecreateSvg",
+        Msg::ReloadSvgs(..) => "ReloadSvgs",
+        Msg::Refresh(..) => "Refresh",
+        Msg::RefreshWorkspace(..) => "RefreshWorkspace",
+        Msg::ResetWorkspaceRequest => "ResetWorkspaceRequest",
+        Msg::ResetWorkspace => "ResetWorkspace",
+        Msg::SaveWorkspace => "SaveWorkspace",
+        Msg::LoadWorkspaceRequest => "LoadWorkspaceRequest",
+        Msg::LoadWorkspace(..) => "LoadWorkspace",
+        Msg::OpenLibraryEntry(..) => "OpenLibraryEntry",
+        Msg::DeleteLibraryEntryRequest(..) => "DeleteLibraryEntryRequest",
+        Msg::DeleteLibraryEntry(..) => "DeleteLibraryEntry",
+        Msg::ExportLibraryEntry(..) => "ExportLibraryEntry",
+        Msg::ImportLibraryEntries => "ImportLibraryEntries",
+        Msg::ImportLibraryEntry(..) => "ImportLibraryEntry",
+        Msg::SwitchWorkspace(..) => "SwitchWorkspace",
+        Msg::NewWorkspaceRequest => "NewWorkspaceRequest",
+        Msg::NewWorkspace(..) => "NewWorkspace",
+        Msg::RenameWorkspaceRequest(..) => "RenameWorkspaceRequest",
+        Msg::RenameWorkspace(..) => "RenameWorkspace",
+        Msg::DuplicateWorkspace(..) => "DuplicateWorkspace",
+        Msg::DeleteWorkspaceRequest(..) => "DeleteWorkspaceRequest",
+    }
 }
 
 #[cfg(test)]

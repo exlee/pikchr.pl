@@ -19,7 +19,7 @@ fn measure(mut workload: impl FnMut() -> usize, samples: usize) -> (Stats, usize
         black_box(workload());
     }
     let mut elapsed = Vec::with_capacity(samples);
-    let mut checksum = 0;
+    let mut checksum = 0usize;
     for _ in 0..samples {
         let started = Instant::now();
         checksum = checksum.wrapping_add(black_box(workload()));
