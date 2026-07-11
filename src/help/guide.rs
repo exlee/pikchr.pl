@@ -6,24 +6,45 @@ use crate::Msg;
 use super::HelpTopic;
 
 fn heading(ui: &mut egui::Ui, text: &str) {
-    ui.add_space(8.0);
-    ui.label(
-        egui::RichText::new(text)
-            .monospace()
-            .size(18.0)
-            .color(ui.visuals().hyperlink_color),
-    );
+    ui.add_space(14.0);
+    ui.label(egui::RichText::new(text).size(19.0).strong());
+    ui.add_space(3.0);
 }
 
 fn feature(ui: &mut egui::Ui, name: &str, description: &str) {
-    ui.horizontal_wrapped(|ui| {
-        ui.label(
-            egui::RichText::new(name)
-                .monospace()
-                .color(ui.visuals().hyperlink_color),
+    let term_width = (ui.available_width() * 0.28).clamp(112.0, 160.0);
+    ui.horizontal_top(|ui| {
+        ui.allocate_ui_with_layout(
+            egui::vec2(term_width, 0.0),
+            egui::Layout::top_down(egui::Align::Min),
+            |ui| {
+                ui.set_width(term_width);
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(name)
+                            .monospace()
+                            .strong()
+                            .color(ui.visuals().hyperlink_color),
+                    )
+                    .wrap(),
+                );
+            },
         );
-        ui.label(description);
+        ui.add(egui::Label::new(description).wrap());
     });
+    ui.add_space(5.0);
+}
+
+fn code_example(ui: &mut egui::Ui, title: &str, code: &str) {
+    ui.label(egui::RichText::new(title).small().strong());
+    egui::Frame::new()
+        .fill(ui.visuals().faint_bg_color)
+        .corner_radius(4.0)
+        .inner_margin(8.0)
+        .show(ui, |ui| {
+            ui.label(egui::RichText::new(code).monospace());
+        });
+    ui.add_space(6.0);
 }
 
 /// A hyperlink-styled, keyboard-focusable label that opens the Pikchr Grammar
@@ -32,8 +53,7 @@ fn grammar_link(ui: &mut egui::Ui, tx: &Sender<Msg>) {
     let accent = ui.visuals().hyperlink_color;
     let resp = ui.add(
         egui::Label::new(
-            egui::RichText::new("Open Pikchr Grammar reference \u{2192}")
-                .monospace()
+            egui::RichText::new("Open Pikchr Grammar reference")
                 .color(accent)
                 .underline(),
         )
@@ -46,213 +66,261 @@ fn grammar_link(ui: &mut egui::Ui, tx: &Sender<Msg>) {
     resp.on_hover_cursor(egui::CursorIcon::PointingHand);
 }
 
-fn common_editor_help(ui: &mut egui::Ui) {
+fn common_editor_help(
+    ui: &mut egui::Ui,
+    has_output_selector: bool,
+    show_default_enter: bool,
+    has_render_window: bool,
+) {
     heading(ui, "Editing");
     feature(
         ui,
         "Live updates",
-        "The render and dependent windows update automatically after you edit source.",
+        "Renders and dependent windows refresh as you edit.",
     );
-    feature(
-        ui,
-        "Output Type",
-        "Choose Pikchr or Svgbob per diagram editor. Generated references only compose matching output types.",
-    );
+    if has_output_selector {
+        feature(
+            ui,
+            "Output type",
+            "Choose Pikchr or Svgbob for each diagram editor. Generated references must use the same type.",
+        );
+    }
     feature(
         ui,
         "Cmd/Ctrl+R",
-        "Renames the focused editor. Names are used by cross-window references.",
+        "Rename the focused editor. References use editor names.",
     );
+    if show_default_enter {
+        feature(ui, "Enter", "Insert a newline and adjust indentation.");
+    }
     feature(
         ui,
-        "Enter",
-        "Inserts a newline and automatically carries or adjusts indentation.",
+        "Close",
+        "Hide the window. Reopen it from the Windows menu.",
     );
-    feature(
-        ui,
-        "Close button",
-        "Hides the window. Reopen it from Windows in the main menu.",
-    );
-    feature(
-        ui,
-        "Cmd/Ctrl + close button",
-        "Permanently deletes the editor and its render window from the workspace.",
-    );
+    let delete_description = if has_render_window {
+        "Delete the editor and its Render window from the workspace."
+    } else {
+        "Delete the editor from the workspace."
+    };
+    feature(ui, "Cmd/Ctrl+Close", delete_description);
+}
 
+fn reference_help(ui: &mut egui::Ui) {
     heading(ui, "Cross-window references");
     feature(
         ui,
         "!!NAME!!",
-        "Includes the raw source text of another named editor. Plain text windows can be included this way.",
+        "Insert the raw source of another named editor. This also works with plain-text windows.",
     );
     feature(
         ui,
         "$$NAME$$",
-        "Includes generated source from another named diagram editor when both editors use the same Output Type.",
+        "Insert generated source from a named diagram editor with the same output type.",
     );
     feature(
         ui,
         "X = NAME",
-        "At the start of Svgbob source inserted by $$EDIT$$, maps the one-character marker X to another named editor. Its generated source is overlaid at each X, column by column, without inserting newlines into the surrounding canvas.",
+        "At the top of inserted Svgbob source, map marker X to a named editor. Its output overlays every X column by column, without adding lines to the canvas.",
     );
-    ui.label("Example — EDIT node:");
-    ui.label(egui::RichText::new("9 = 3320\nAAA  9\nAAA\nAAA").monospace());
-    ui.label("3320 node:");
-    ui.label(egui::RichText::new("ZZ\nZZ").monospace());
-    ui.label("Result:");
-    ui.label(egui::RichText::new("AAA  ZZ\nAAA  ZZ\nAAA").monospace());
-    ui.label("References can be nested up to three replacement passes.");
+
+    ui.add_space(3.0);
+    code_example(ui, "EDIT", "9 = 3320\nAAA  9\nAAA\nAAA");
+    code_example(ui, "3320", "ZZ\nZZ");
+    code_example(ui, "Result", "AAA  ZZ\nAAA  ZZ\nAAA");
+    ui.label(
+        egui::RichText::new("References may be nested through three replacement passes.").small(),
+    );
 }
 
 fn topic_help(ui: &mut egui::Ui, topic: HelpTopic, tx: &Sender<Msg>) {
     match topic {
         HelpTopic::Overview | HelpTopic::Grammar => {},
         HelpTopic::Pikchr => {
-            common_editor_help(ui);
-            heading(ui, "Pikchr");
-            ui.label(
-                "Write Pikchr directly. Valid source is rendered live in the paired Render window.",
-            );
-            ui.add_space(4.0);
+            heading(ui, "Pikchr editor");
+            ui.label("Write Pikchr source and preview it live in the paired Render window.");
+            ui.add_space(8.0);
             grammar_link(ui, tx);
+            common_editor_help(ui, true, true, true);
+            reference_help(ui);
         },
         HelpTopic::Svgbob => {
-            common_editor_help(ui);
-            heading(ui, "Svgbob");
+            heading(ui, "Svgbob editor");
             ui.label(
-                "Write ASCII art directly. Svgbob output is rendered live in the paired Render window.",
+                "Draw diagrams as ASCII art and preview them live in the paired Render window.",
             );
-            ui.label(
-                "This dedicated editor uses a block cursor and canvas-style arrows: Right and Down can extend ragged lines or add rows. Its Mode menu offers Insert (the default) and Replace; Replace overwrites each canvas cell as you type and then advances the block cursor.",
+
+            heading(ui, "Canvas editing");
+            feature(
+                ui,
+                "Arrow keys",
+                "Move the block cursor. Right and Down extend the canvas when needed.",
             );
-            ui.label(
-                "In Replace mode, the cursor remembers the positions of the two most recent inputs. If their row and column differences are each at most one, it repeats that exact vector: (1,1) then (1,2) moves to (1,3), while (1,1) then (2,2) moves to (3,3). Larger gaps use normal next-cell movement.",
+            feature(
+                ui,
+                "Insert mode",
+                "Insert text at the cursor. This is the default mode.",
             );
-            ui.label(
-                "It also keeps its own bindings: Enter does not carry indentation, and Tab/Cmd-Ctrl-R are available for Svgbob-specific bindings.",
+            feature(
+                ui,
+                "Replace mode",
+                "Overwrite a cell, then continue in the direction established by the two latest adjacent inputs.",
             );
+            feature(
+                ui,
+                "Enter",
+                "Add a canvas row without carrying indentation.",
+            );
+            feature(ui, "Tab", "Switch between Insert and Replace modes.");
+
+            common_editor_help(ui, false, false, true);
+            reference_help(ui);
         },
         HelpTopic::Prolog => {
-            common_editor_help(ui);
-            heading(ui, "Prolog");
-            ui.label("Define a diagram//0 DCG. Its text output is interpreted using the selected Output Type.");
+            heading(ui, "Prolog editor");
+            ui.label("Define a diagram//0 DCG. Its text output is rendered using the selected output type.");
+            common_editor_help(ui, true, true, true);
+            reference_help(ui);
         },
         HelpTopic::Tcl => {
-            common_editor_help(ui);
-            heading(ui, "Tcl");
-            ui.label("Return source for the selected Output Type. The Tcl editor is available only when Tcl 8.6 can be loaded.");
+            heading(ui, "Tcl editor");
+            ui.label("Return diagram source from a Tcl script. This editor is available when Tcl 8.6 can be loaded.");
+            common_editor_help(ui, true, true, true);
+            reference_help(ui);
         },
         HelpTopic::Mruby => {
-            common_editor_help(ui);
-            heading(ui, "Ruby");
-            ui.label("Text written with print or puts becomes source for the selected Output Type. The editor is available only when Ruby support is available.");
+            heading(ui, "Ruby editor");
+            ui.label("Use print or puts to produce diagram source. This editor is available when Ruby support is enabled.");
+            common_editor_help(ui, true, true, true);
+            reference_help(ui);
         },
         HelpTopic::PlainText => {
-            common_editor_help(ui);
-            heading(ui, "Plain text");
-            ui.label("Stores reusable raw text. Include it from another editor with !!NAME!!; it has no generated Pikchr output or Render window.");
+            heading(ui, "Plain-text editor");
+            ui.label(
+                "Store reusable text for !!NAME!! references. Plain-text windows have no renderer.",
+            );
+            common_editor_help(ui, false, true, false);
+            reference_help(ui);
         },
         HelpTopic::Render => {
             heading(ui, "Render window");
+            ui.label("Preview and export the output of its paired diagram editor.");
+            heading(ui, "Preview and export");
             feature(
                 ui,
-                "Automatic preview",
-                "Displays the paired editor's generated output and redraws as the window is resized.",
+                "Live preview",
+                "Refreshes after edits and redraws when resized.",
             );
             feature(
                 ui,
                 "Export",
-                "Exports SVG, PNG, transparent PNG, or copies generated Pikchr or Svgbob source to the clipboard.",
+                "Save SVG, PNG, or transparent PNG; or copy generated source.",
             );
             feature(
                 ui,
-                "Close button",
-                "Hides the preview. Reopen it from Windows in the main menu.",
+                "Close",
+                "Hide the preview. Reopen it from the Windows menu.",
             );
             feature(
                 ui,
-                "Cmd/Ctrl + close button",
-                "Permanently deletes only this Render window. It is recreated when its editor next renders.",
+                "Cmd/Ctrl+Close",
+                "Delete this Render window. It returns when the editor renders again.",
             );
         },
     }
 }
 
-/// The User Guide body: a context-specific section (if any) followed by the
-/// full feature guide.
+fn overview(ui: &mut egui::Ui, tx: &Sender<Msg>) {
+    ui.label("A quick reference for workspaces, editors, references, and export.");
+    ui.add_space(8.0);
+    grammar_link(ui, tx);
+
+    heading(ui, "Workspace");
+    feature(
+        ui,
+        "Autosave",
+        "The workspace and window layout persist between launches.",
+    );
+    feature(
+        ui,
+        "Save / Load",
+        "Export or import the complete workspace as JSON.",
+    );
+    feature(
+        ui,
+        "Reset",
+        "Delete every workspace window after confirmation.",
+    );
+    feature(
+        ui,
+        "Windows",
+        "Show or hide workspace, Logger, and Debug windows.",
+    );
+    feature(ui, "View", "Change the scale of the whole interface.");
+
+    common_editor_help(ui, true, true, true);
+    reference_help(ui);
+
+    heading(ui, "Editor types");
+    feature(
+        ui,
+        "Pikchr",
+        "Direct diagram source with Pikchr or Svgbob output.",
+    );
+    feature(
+        ui,
+        "Svgbob",
+        "ASCII-art canvas with dedicated navigation and editing modes.",
+    );
+    feature(ui, "Prolog", "A diagram//0 DCG produces diagram source.");
+    feature(
+        ui,
+        "Tcl",
+        "A Tcl script returns diagram source when Tcl 8.6 is available.",
+    );
+    feature(
+        ui,
+        "Ruby",
+        "print and puts produce diagram source when Ruby is available.",
+    );
+    feature(
+        ui,
+        "Plain text",
+        "Reusable raw text with no paired Render window.",
+    );
+
+    heading(ui, "Rendering and export");
+    feature(
+        ui,
+        "Render window",
+        "A resizable live preview paired with each diagram editor.",
+    );
+    feature(
+        ui,
+        "Export",
+        "Save SVG, PNG, transparent PNG, or generated source.",
+    );
+    feature(
+        ui,
+        "Errors",
+        "See evaluation and rendering errors beside the editor and in Logger.",
+    );
+}
+
 pub(super) fn render_guide(ui: &mut egui::Ui, topic: HelpTopic, tx: &Sender<Msg>) {
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            if topic != HelpTopic::Overview {
-                topic_help(ui, topic, tx);
-                ui.separator();
-                heading(ui, "Full feature guide");
-            } else {
-                grammar_link(ui, tx);
-                ui.add_space(4.0);
-            }
-
-            heading(ui, "Workspace");
-            feature(
-                ui,
-                "Autosave",
-                "The current workspace and window layout persist between app launches.",
-            );
-            feature(
-                ui,
-                "Save / Load Workspace",
-                "Exports or imports the complete workspace as JSON.",
-            );
-            feature(
-                ui,
-                "Reset Workspace",
-                "Deletes all workspace windows after confirmation.",
-            );
-            feature(
-                ui,
-                "Windows",
-                "Shows or hides existing windows, plus the diagnostic Logger and Debug windows.",
-            );
-            feature(ui, "View", "Changes the scale of the complete interface.");
-
-            common_editor_help(ui);
-
-            heading(ui, "Editor types");
-            feature(ui, "Pikchr", "Direct source editor with Pikchr or Svgbob output.");
-            feature(ui, "Svgbob", "Dedicated ASCII-art editor with Svgbob output and independent bindings.");
-            feature(ui, "Prolog", "A diagram//0 DCG generates source for the selected output type.");
-            feature(
-                ui,
-                "Tcl",
-                "A Tcl script returns source for the selected output type when Tcl 8.6 is available.",
-            );
-            feature(
-                ui,
-                "Ruby",
-                "print and puts output becomes source for the selected output type when Ruby support is available.",
-            );
-            feature(
-                ui,
-                "Plain text",
-                "Reusable raw text for !!NAME!! references; no paired render.",
-            );
-
-            heading(ui, "Rendering and export");
-            feature(
-                ui,
-                "Live Render window",
-                "Diagram editors own a paired, resizable preview window.",
-            );
-            feature(
-                ui,
-                "Export",
-                "Render windows export SVG, PNG, transparent PNG, and generated source for their selected output type.",
-            );
-            feature(
-                ui,
-                "Errors",
-                "Evaluation and rendering errors appear next to their editor and in the Logger.",
-            );
+            egui::Frame::new()
+                .inner_margin(egui::Margin::symmetric(18, 12))
+                .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    if topic == HelpTopic::Overview {
+                        overview(ui, tx);
+                    } else {
+                        topic_help(ui, topic, tx);
+                    }
+                    ui.add_space(12.0);
+                });
         });
 }

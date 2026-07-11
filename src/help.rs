@@ -137,8 +137,6 @@ impl mini_window::InnerWindow for HelpWindow {
         if self.topic.is_grammar() {
             render_grammar(ui, &mut self.scroll_target, &mut self.grammar_view);
         } else {
-            // Guide keeps the existing monospace look (egui default Monospace).
-            ui.style_mut().override_font_id = Some(egui::TextStyle::Monospace.resolve(ui.style()));
             render_guide(ui, self.topic, &tx);
         }
     }
