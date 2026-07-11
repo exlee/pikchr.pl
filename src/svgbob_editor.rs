@@ -5,10 +5,10 @@ use crate::{
     Msg, SvgbobEditMode,
     editor::{self, GenericEditor, HandleEnter as _},
     icons::{AppIcon, icon_button},
-    impl_generated_content, impl_id, impl_indexable, impl_initialize, impl_initialize_tx,
-    impl_target, impl_visible,
+    impl_id, impl_indexable, impl_initialize, impl_initialize_tx, impl_target, impl_visible,
     mini_window::{
-        self, EditorWindow, HasMenu, HasName as _, MiniWindow, RawContent, RenderToggle,
+        self, EditorWindow, GeneratedContent, HasMenu, HasName as _, MiniWindow, RawContent,
+        RenderToggle,
     },
     setter_getter_for_trait,
 };
@@ -20,6 +20,7 @@ pub struct SvgbobEditor {
     pub id: egui::Id,
     target_svg: egui::Id,
     pub(crate) visible: bool,
+    #[serde(serialize_with = "serialize_trimmed_canvas")]
     pub(crate) content: String,
     pub(crate) index: usize,
     #[serde(skip_serializing, default)]
@@ -44,6 +45,85 @@ pub struct SvgbobEditor {
 
 fn default_render() -> bool {
     true
+}
+
+fn trimmed_canvas(content: &str) -> String {
+    let lines = content
+        .split('\n')
+        .map(|line| line.chars().collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+    let Some(last_row) = lines
+        .iter()
+        .rposition(|line| line.iter().any(|character| !character.is_whitespace()))
+    else {
+        return String::new();
+    };
+    let width = lines[..=last_row]
+        .iter()
+        .filter_map(|line| {
+            line.iter()
+                .rposition(|character| !character.is_whitespace())
+        })
+        .max()
+        .expect("a non-blank row has a non-blank column")
+        + 1;
+
+    let mut trimmed = String::new();
+    for (row, line) in lines[..=last_row].iter().enumerate() {
+        if row > 0 {
+            trimmed.push('\n');
+        }
+        trimmed.extend(line.iter().take(width));
+    }
+    trimmed
+}
+
+fn serialize_trimmed_canvas<S>(content: &str, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(&trimmed_canvas(content))
+}
+
+fn fitted_canvas(content: &str, minimum_rows: usize, minimum_columns: usize) -> String {
+    let canonical = trimmed_canvas(content);
+    let mut lines = if canonical.is_empty() {
+        Vec::new()
+    } else {
+        canonical
+            .split('\n')
+            .map(|line| line.chars().collect::<Vec<_>>())
+            .collect::<Vec<_>>()
+    };
+    let columns = lines
+        .iter()
+        .map(Vec::len)
+        .max()
+        .unwrap_or_default()
+        .max(minimum_columns);
+    let rows = lines.len().max(minimum_rows);
+    lines.resize_with(rows, Vec::new);
+    for line in &mut lines {
+        line.resize(columns, ' ');
+    }
+
+    let mut fitted = String::new();
+    for (row, line) in lines.iter().enumerate() {
+        if row > 0 {
+            fitted.push('\n');
+        }
+        fitted.extend(line);
+    }
+    fitted
+}
+
+fn visible_cells(space: f32, margin: f32, cell_size: f32) -> usize {
+    let cells = ((space - margin).max(cell_size) / cell_size).floor();
+    if cells.is_finite() && cells <= 10_000.0 {
+        cells as usize
+    } else {
+        0
+    }
 }
 
 impl SvgbobEditor {
@@ -73,6 +153,57 @@ impl SvgbobEditor {
     #[cfg(test)]
     pub(crate) fn edit_mode(&self) -> SvgbobEditMode {
         self.mode
+    }
+
+    fn fit_editing_canvas(&mut self, ctx: &Context, ui: &mut Ui, editor_id: egui::Id) {
+        const HORIZONTAL_MARGIN: f32 = 8.0;
+        const VERTICAL_MARGIN: f32 = 4.0;
+
+        let cursor = egui::TextEdit::load_state(ctx, editor_id).and_then(|state| {
+            state.cursor.char_range().map(|range| {
+                (
+                    state,
+                    grid_position(&self.content, range.primary.index),
+                    grid_position(&self.content, range.secondary.index),
+                    range.h_pos,
+                )
+            })
+        });
+        let font_id = egui::TextStyle::Monospace.resolve(ui.style());
+        let (cell_width, row_height) =
+            ui.fonts_mut(|fonts| (fonts.glyph_width(&font_id, ' '), fonts.row_height(&font_id)));
+        let available = ui.available_size();
+        let viewport_columns = visible_cells(available.x, HORIZONTAL_MARGIN, cell_width);
+        let viewport_rows = visible_cells(available.y, VERTICAL_MARGIN, row_height);
+        let cursor_columns = cursor.as_ref().map_or(0, |(_, primary, secondary, _)| {
+            primary.1.max(secondary.1) + 1
+        });
+        let cursor_rows = cursor.as_ref().map_or(0, |(_, primary, secondary, _)| {
+            primary.0.max(secondary.0) + 1
+        });
+        let fitted = fitted_canvas(
+            &self.content,
+            viewport_rows.max(cursor_rows),
+            viewport_columns.max(cursor_columns),
+        );
+        if fitted == self.content {
+            return;
+        }
+
+        self.content = fitted;
+        if let Some((mut state, primary, secondary, h_pos)) = cursor {
+            let lines = line_bounds(&self.content);
+            let cursor_at = |(row, column): (usize, usize)| {
+                let (start, length) = lines[row];
+                egui::text::CCursor::new(start + column.min(length))
+            };
+            state.cursor.set_char_range(Some(egui::text::CCursorRange {
+                primary: cursor_at(primary),
+                secondary: cursor_at(secondary),
+                h_pos,
+            }));
+            state.store(ctx, editor_id);
+        }
     }
 
     fn move_canvas_cursor(
@@ -649,6 +780,9 @@ impl HasMenu for SvgbobEditor {
 impl GenericEditor for SvgbobEditor {
     fn editor_spec(&mut self, editor_id: egui::Id, ui: &mut Ui) -> TextEditOutput {
         ui.scope(|ui| {
+            let ctx = ui.ctx().clone();
+            self.fit_editing_canvas(&ctx, ui, editor_id);
+
             // TextEdit only has a bar cursor. Hide it and paint a full
             // monospace cell after the widget so the dedicated canvas editor
             // has a conventional block cursor.
@@ -662,7 +796,6 @@ impl GenericEditor for SvgbobEditor {
             ui.visuals_mut().selection.bg_fill = egui::Color32::TRANSPARENT;
             ui.visuals_mut().selection.stroke.color = ui.visuals().text_color();
 
-            let ctx = ui.ctx().clone();
             let rectangle_changed = self.handle_rectangle_input(&ctx, ui, editor_id);
             let paste_changed = self.handle_column_paste(&ctx, ui, editor_id);
             let backspace_changed = self.handle_replace_backspace(&ctx, ui, editor_id);
@@ -670,7 +803,6 @@ impl GenericEditor for SvgbobEditor {
 
             let mut output = egui::TextEdit::multiline(&mut self.content)
                 .code_editor()
-                .desired_width(f32::INFINITY)
                 .id(editor_id)
                 .layouter(&mut |ui, text, _wrap_width| {
                     let font_id = egui::TextStyle::Monospace.resolve(ui.style());
@@ -937,7 +1069,6 @@ impl_target!(SvgbobEditor, target_svg);
 impl_visible!(SvgbobEditor, visible);
 impl_initialize!(SvgbobEditor, initialized);
 impl_indexable!(SvgbobEditor);
-impl_generated_content!(SvgbobEditor, content);
 impl_initialize_tx!(
     SvgbobEditor, watch_tx,
     on_change: |(ctx,id,content)| Msg::UpdateRender(ctx, id, content),
@@ -945,7 +1076,26 @@ impl_initialize_tx!(
     empty: (Context::default(),egui::Id::new(""), String::new())
 );
 
-setter_getter_for_trait! { (content => String | content.clone() => String) for SvgbobEditor as raw_content for mini_window::RawContent }
+impl GeneratedContent for SvgbobEditor {
+    fn get_generated_content(&self) -> String {
+        trimmed_canvas(&self.content)
+    }
+
+    fn set_generated_content(&mut self, value: String) {
+        self.content = trimmed_canvas(&value);
+    }
+}
+
+impl RawContent for SvgbobEditor {
+    fn get_raw_content(&self) -> String {
+        trimmed_canvas(&self.content)
+    }
+
+    fn set_raw_content(&mut self, value: String) {
+        self.content = trimmed_canvas(&value);
+    }
+}
+
 setter_getter_for_trait! { (error => Option<String> | error.clone() => Option<String>) for SvgbobEditor as error for mini_window::HasError }
 setter_getter_for_trait! { (name => String | name.clone() => String) for SvgbobEditor as name for mini_window::HasName }
 
@@ -964,14 +1114,145 @@ mod tests {
     #[test]
     fn editor_does_not_wrap_long_canvas_rows() {
         egui::__run_test_ui(|ui| {
-            let mut editor =
-                SvgbobEditor::new(egui::Id::new("svgbob"), egui::Id::new("render"));
+            let mut editor = SvgbobEditor::new(egui::Id::new("svgbob"), egui::Id::new("render"));
             editor.content = "012345678901234567890123456789".to_owned();
             ui.set_max_width(40.0);
             let output = editor.editor_spec(egui::Id::new("editor"), ui);
 
-            assert_eq!(output.galley.rows.len(), 1);
+            assert_eq!(output.galley.rows.len(), editor.content.lines().count());
         });
+    }
+
+    #[test]
+    fn fitting_canvas_drops_padding_outside_viewport_and_cursor_bounds() {
+        let padded = format!("X{}", " ".repeat(79));
+
+        let viewport_fitted = fitted_canvas(&padded, 3, 60);
+        assert_eq!(viewport_fitted.lines().count(), 3);
+        assert!(
+            viewport_fitted
+                .lines()
+                .all(|line| line.chars().count() == 60)
+        );
+
+        let cursor_fitted = fitted_canvas(&padded, 3, 76);
+        assert!(cursor_fitted.lines().all(|line| line.chars().count() == 76));
+        assert_eq!(trimmed_canvas(&cursor_fitted), "X");
+    }
+
+    #[test]
+    fn visible_cells_never_overflows_the_viewport() {
+        assert_eq!(visible_cells(100.0, 4.0, 18.0), 5);
+        assert!(5.0 * 18.0 + 4.0 <= 100.0);
+
+        assert_eq!(visible_cells(100.0, 8.0, 8.0), 11);
+        assert!(11.0 * 8.0 + 8.0 <= 100.0);
+    }
+
+    #[test]
+    fn long_row_does_not_set_the_window_width() {
+        use std::{cell::Cell, rc::Rc};
+
+        use egui_kittest::Harness;
+
+        let window_id = egui::Id::new("svgbob_resize_window");
+        let editor_id = egui::Id::new("editor");
+        let text_rect = Rc::new(Cell::new(egui::Rect::NOTHING));
+        let viewport_rect = Rc::new(Cell::new(egui::Rect::NOTHING));
+        let shown_text_rect = text_rect.clone();
+        let shown_viewport_rect = viewport_rect.clone();
+        let mut editor = SvgbobEditor::new(egui::Id::new("svgbob"), egui::Id::new("render"));
+        editor.content = "x".repeat(80);
+        let mut harness = Harness::builder()
+            .with_size(egui::vec2(1600.0, 900.0))
+            .build(move |ctx| {
+                egui::Window::new("resize test")
+                    .id(window_id)
+                    .default_size(egui::vec2(1000.0, 500.0))
+                    .resizable(true)
+                    .show(ctx, |ui| {
+                        let output =
+                            egui::ScrollArea::both()
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    ui.add_sized(ui.available_size(), |ui: &mut egui::Ui| {
+                                        let output = editor.editor_spec(editor_id, ui);
+                                        shown_text_rect.set(output.response.rect);
+                                        output.response
+                                    });
+                                });
+                        shown_viewport_rect.set(output.inner_rect);
+                    });
+            });
+
+        let mut state = egui::text_edit::TextEditState::default();
+        state
+            .cursor
+            .set_char_range(Some(egui::text::CCursorRange::one(
+                egui::text::CCursor::new(80),
+            )));
+        state.store(&harness.ctx, editor_id);
+        harness
+            .ctx
+            .memory_mut(|memory| memory.request_focus(editor_id));
+        harness.run_steps(2);
+
+        let initial = harness
+            .ctx
+            .memory(|memory| memory.area_rect(window_id).unwrap());
+        let handle = initial.right_bottom();
+        let target = handle - egui::vec2(700.0, 0.0);
+        harness.hover_at(handle);
+        harness.step();
+        harness.drag_at(handle);
+        harness.step();
+        harness.hover_at(target);
+        harness.run_steps(2);
+        harness.drop_at(target);
+        harness.run_steps(2);
+
+        let resized = harness
+            .ctx
+            .memory(|memory| memory.area_rect(window_id).unwrap());
+        assert!(resized.width() < 350.0, "resized window was {resized:?}");
+        assert!(
+            text_rect.get().right() >= viewport_rect.get().right() - 1.0,
+            "text frame {:?} ended before viewport {:?}",
+            text_rect.get(),
+            viewport_rect.get()
+        );
+    }
+
+    #[test]
+    fn trims_blank_bottom_rows_and_columns_right_of_the_last_non_blank_cell() {
+        assert_eq!(
+            trimmed_canvas("A     X   \nB         \n          \n"),
+            "A     X\nB      "
+        );
+        assert_eq!(trimmed_canvas("   \n\n"), "");
+    }
+
+    #[test]
+    fn canonical_reads_do_not_modify_the_padded_editing_canvas() {
+        let mut editor = SvgbobEditor::new(egui::Id::new("svgbob"), egui::Id::new("render"));
+        editor.content = "A     X   \nB         \n          \n".to_owned();
+        let padded = editor.content.clone();
+
+        assert_eq!(editor.get_raw_content(), "A     X\nB      ");
+        assert_eq!(editor.get_generated_content(), "A     X\nB      ");
+        assert_eq!(editor.content, padded);
+    }
+
+    #[test]
+    fn serialized_canvas_content_is_canonical() {
+        let mut editor = SvgbobEditor::new(egui::Id::new("svgbob"), egui::Id::new("render"));
+        editor.content = "A   \n    \n".to_owned();
+
+        let value = serde_json::to_value(&editor).unwrap();
+        assert_eq!(value["content"], "A");
+
+        let restored: SvgbobEditor = serde_json::from_value(value).unwrap();
+        assert_eq!(restored.content, "A");
     }
 
     #[test]
