@@ -1,23 +1,22 @@
 use eframe::egui;
 use parking_lot::RwLock;
-use slog::{Logger, debug, info, o};
+use slog::{Logger, debug, error, info, o};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use state::AppState;
-use state_serialize::DiagramIDEPersistent;
+use state_serialize::{DiagramIDEPersistent, PersistenceLoad, PersistenceStatus};
 
 mod dependencies;
 mod editor;
-mod editor_state;
 pub mod help;
 mod icons;
 mod identifiers;
 mod image;
 pub mod logger;
 mod menubar;
-mod messages;
 pub mod message_handler;
+mod messages;
 mod mini_window;
 mod modal;
 mod mruby;
@@ -39,12 +38,12 @@ mod tcl;
 mod tcl_editor;
 pub mod text_highlighting;
 pub mod theme;
-pub use messages::{EditorType, ExportType, Msg, OutputType, SvgbobEditMode, Window};
-pub(crate) use dependencies::{clean_old_deps, replace_content};
-#[cfg(test)]
-pub(crate) use dependencies::replace_generated_content;
 #[cfg(feature = "perf-workloads")]
 pub(crate) use dependencies::perf_dependency_workload;
+#[cfg(test)]
+pub(crate) use dependencies::replace_generated_content;
+pub(crate) use dependencies::{clean_old_deps, replace_content};
+pub use messages::{EditorType, ExportType, Msg, OutputType, SvgbobEditMode, Window};
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 #[serde(from = "DiagramIDEPersistent", into = "DiagramIDEPersistent")]
@@ -57,6 +56,7 @@ pub struct DiagramIDE {
     /// Tracks the active workspace id so the UI loop can detect a switch and
     /// refresh SVG textures for the newly-promoted workspace.
     seen_workspace_id: state::WorkspaceId,
+    persistence_status: PersistenceStatus,
 }
 impl DiagramIDE {
     pub fn new_test(
@@ -74,6 +74,7 @@ impl DiagramIDE {
             window_size: egui::vec2(800.0, 600.0),
             logger: crate::logger::init_logger(),
             seen_workspace_id,
+            persistence_status: PersistenceStatus::Clean,
         }
     }
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
@@ -84,7 +85,7 @@ impl DiagramIDE {
         // which would panic a restored HelpWindow on frame 1.)
         crate::install_help_fonts(&cc.egui_ctx);
         let logger = crate::logger::init_logger();
-        let start_def = || {
+        let start_def = |persistence_status| {
             let blank_state = Arc::new(RwLock::new(AppState::default()));
             let seen_workspace_id = blank_state.read().active_workspace_id;
             let tx = Self::spawn_message_handler(logger.clone(), blank_state.clone());
@@ -96,29 +97,48 @@ impl DiagramIDE {
                 window_size: egui::vec2(800.0, 600.0),
                 logger: logger.clone(),
                 seen_workspace_id,
+                persistence_status,
             }
         };
         let pers_logger = logger.new(o!("category" => "persistence"));
         if let Some(storage) = cc.storage {
-            if let Some(persistent) =
-                eframe::get_value::<DiagramIDEPersistent>(storage, eframe::APP_KEY)
-            {
-                info!(pers_logger, "Load happening");
-                let mut prev_state = DiagramIDE::from(persistent);
-                let tx = Self::spawn_message_handler(
-                    prev_state.logger.clone(),
-                    prev_state.state.clone(),
-                );
-                prev_state.tx = tx.clone();
-                //let _ = tx.try_send(Msg::ReloadSvgs(cc.egui_ctx.clone()));
-                prev_state
-            } else {
-                info!(pers_logger, "Prev state not found");
-                start_def()
+            match state_serialize::load_persistent(storage) {
+                PersistenceLoad::Loaded(persistent) => {
+                    info!(pers_logger, "Loaded primary workspace state");
+                    let mut prev_state = DiagramIDE::from(persistent);
+                    let tx = Self::spawn_message_handler(
+                        prev_state.logger.clone(),
+                        prev_state.state.clone(),
+                    );
+                    prev_state.tx = tx;
+                    prev_state
+                },
+                PersistenceLoad::Recovered(persistent, status) => {
+                    error!(
+                        pers_logger,
+                        "Primary workspace state was unreadable; recovered backup"
+                    );
+                    let mut prev_state = DiagramIDE::from(persistent);
+                    let tx = Self::spawn_message_handler(
+                        prev_state.logger.clone(),
+                        prev_state.state.clone(),
+                    );
+                    prev_state.tx = tx;
+                    prev_state.persistence_status = status;
+                    prev_state
+                },
+                PersistenceLoad::Blocked(status) => {
+                    error!(pers_logger, "Workspace restore failed; saving is blocked");
+                    start_def(status)
+                },
+                PersistenceLoad::Missing => {
+                    info!(pers_logger, "No previous workspace state found");
+                    start_def(PersistenceStatus::Clean)
+                },
             }
         } else {
             info!(pers_logger, "Storage not found");
-            start_def()
+            start_def(PersistenceStatus::Clean)
         }
     }
     pub fn spawn_message_handler(
@@ -159,6 +179,9 @@ impl DiagramIDE {
         egui::CentralPanel::default().show(ctx, |ui| {
             let heading = self.state.read().active_workspace_name.clone();
             ui.heading(format!("Workspace: {heading}"));
+            if let Some(warning) = self.persistence_status.warning() {
+                ui.colored_label(egui::Color32::RED, warning);
+            }
         });
 
         {
@@ -250,8 +273,11 @@ impl eframe::App for DiagramIDE {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         info!(slog_scope::logger(), "Saving!"; "category" => "persistence");
         let persistent = DiagramIDEPersistent::from(self.clone());
-        eframe::set_value(storage, eframe::APP_KEY, &persistent);
-        storage.flush();
+        if let Err(err) =
+            state_serialize::save_persistent(storage, &persistent, &mut self.persistence_status)
+        {
+            error!(slog_scope::logger(), "Workspace save blocked"; "error" => err);
+        }
     }
 }
 

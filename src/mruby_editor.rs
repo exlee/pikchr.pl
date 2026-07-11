@@ -4,7 +4,6 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     Msg,
     editor::{self, GenericEditor, HandleEnter as _},
-    editor_state::{RenderedEditorState, impl_rendered_editor_state},
     impl_generated_content, impl_id, impl_indexable, impl_render, impl_target, impl_visible,
     mini_window::{self, HasMenu, HasName as _, MiniWindow},
     sender_ext::DebouncedTrySend as _,
@@ -14,14 +13,37 @@ use crate::{
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 pub struct MrubyEditor {
-    #[serde(flatten)]
-    core: RenderedEditorState,
+    pub id: egui::Id,
+    pub(crate) visible: bool,
+    target_svg: egui::Id,
+    content: String,
+    pikchr_content: String,
+    index: usize,
+    name: String,
+    error: Option<String>,
+    #[serde(default = "default_render")]
+    pub(crate) render: bool,
+    #[serde(default)]
+    pub(crate) output_type: crate::OutputType,
+}
+
+fn default_render() -> bool {
+    true
 }
 
 impl MrubyEditor {
     pub fn new(id: egui::Id, target_svg: egui::Id) -> Self {
         Self {
-            core: RenderedEditorState::new(id, target_svg, Self::template_content()),
+            visible: true,
+            pikchr_content: String::new(),
+            content: Self::template_content(),
+            name: id.short_debug_format(),
+            id,
+            target_svg,
+            index: 1,
+            error: None,
+            render: true,
+            output_type: crate::OutputType::Pikchr,
         }
     }
 
@@ -37,7 +59,6 @@ run "box"
         .into()
     }
 }
-impl_rendered_editor_state!(MrubyEditor);
 
 impl mini_window::EditorWindow for MrubyEditor {
     fn get_editor_window(&self) -> crate::mini_window::EditorWindowView<'_> {

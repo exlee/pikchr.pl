@@ -1,0 +1,4 @@
+(
+    format_version: 999,
+    payload: "future workspace format that this build cannot deserialize",
+)
