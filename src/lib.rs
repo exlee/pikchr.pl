@@ -93,6 +93,7 @@ pub enum Msg {
     ResetError(egui::Id),
     UpdateContent(egui::Id, String),
     UpdateGeneratedContent(egui::Id, String),
+    SetRenderEnabled(#[serde(skip)] Context, egui::Id, bool),
     SetOutputType(#[serde(skip)] Context, egui::Id, OutputType),
     SetSvgbobEditMode(egui::Id, SvgbobEditMode),
     DeleteWindow(egui::Id),

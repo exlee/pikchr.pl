@@ -121,6 +121,12 @@ pub trait MiniWindow: Send + Sync + Visible + Id + HasMenu + InnerWindow + Rende
         self.visible()
     }
 
+    fn close_requested(&mut self, _ctx: &Context, command_only: bool, tx: Sender<Msg>) {
+        if command_only {
+            let _ = tx.try_send(Msg::DeleteWindow(self.get_id()));
+        }
+    }
+
     fn show(&mut self, ctx: &Context, tx: Sender<Msg>, background: DiagramBackground) {
         if !self.should_show() {
             return;
@@ -194,7 +200,11 @@ pub trait MiniWindow: Send + Sync + Visible + Id + HasMenu + InnerWindow + Rende
                                     .on_hover_text("Render diagram\n(unselect for include-only)")
                                     .clicked()
                                 {
-                                    self.set_render_enabled(!render);
+                                    let _ = tx.try_send(Msg::SetRenderEnabled(
+                                        ctx.clone(),
+                                        self.get_id(),
+                                        !render,
+                                    ));
                                 }
                             }
                             if self.can_save_to_library()
@@ -226,9 +236,9 @@ pub trait MiniWindow: Send + Sync + Visible + Id + HasMenu + InnerWindow + Rende
                 self.inner_window(ctx, ui, tx.clone(), background)
             });
         });
-        let modifiers = ctx.input(|i| i.modifiers);
-        if modifiers.command_only() && self.visible() != visible {
-            let _ = tx.clone().try_send(Msg::DeleteWindow(self.get_id()));
+        if self.visible() && !visible {
+            let command_only = ctx.input(|i| i.modifiers.command_only());
+            self.close_requested(ctx, command_only, tx.clone());
         }
         self.set_visible(visible);
     }

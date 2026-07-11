@@ -317,6 +317,15 @@ async fn handle_event(
                 c.set_generated_content(content);
             };
         },
+        Msg::SetRenderEnabled(ctx, id, enabled) => {
+            let mut state = state.write();
+            let render = state.windows.get_mut(&id)?.as_render_toggle_mut()?;
+            if !render.has_renderer() {
+                return None;
+            }
+            render.set_render_enabled(enabled);
+            ctx.request_repaint();
+        },
         Msg::SetOutputType(ctx, id, output_type) => {
             let mut state_write = state.write();
             let target_svg = state_write
@@ -1270,6 +1279,55 @@ mod tests {
             })
             .collect();
         assert_eq!(refreshed, HashSet::from([pikchr_id, plain_id]));
+    }
+
+    #[tokio::test]
+    async fn render_toggle_is_owned_by_editor() {
+        let editor_id = egui::Id::new("pikchr");
+        let svg_id = egui::Id::new("svg");
+        let ctx = egui::Context::default();
+        let state = Arc::new(RwLock::new(AppState::default()));
+        state.write().windows.insert(
+            editor_id,
+            mini_window::Window::PikchrEditor(pikchr_editor::PikchrEditor::new(editor_id, svg_id)),
+        );
+        let mut local_queue = VecDeque::new();
+
+        handle_event(
+            crate::logger::init_logger(),
+            Msg::SetRenderEnabled(ctx.clone(), editor_id, false),
+            state.clone(),
+            &mut local_queue,
+        )
+        .await;
+        assert!(
+            !state
+                .read()
+                .windows
+                .get(&editor_id)
+                .unwrap()
+                .as_render_toggle()
+                .unwrap()
+                .render_enabled()
+        );
+
+        handle_event(
+            crate::logger::init_logger(),
+            Msg::SetRenderEnabled(ctx, editor_id, true),
+            state.clone(),
+            &mut local_queue,
+        )
+        .await;
+        assert!(
+            state
+                .read()
+                .windows
+                .get(&editor_id)
+                .unwrap()
+                .as_render_toggle()
+                .unwrap()
+                .render_enabled()
+        );
     }
 
     #[tokio::test]

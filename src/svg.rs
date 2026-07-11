@@ -4,8 +4,10 @@ use std::fmt;
 use crate::{
     Msg,
     icons::{AppIcon, icon_image},
-    impl_id, impl_indexable, impl_initialize, impl_initialize_tx, impl_visible,
-    mini_window::{self, HasMenu, HasName as _, InitializeWatchTx, InnerWindow, MiniWindow},
+    impl_id, impl_indexable, impl_initialize, impl_initialize_tx,
+    mini_window::{
+        self, HasMenu, HasName as _, InitializeWatchTx, InnerWindow, MiniWindow, Visible,
+    },
     setter_getter_for_trait,
 };
 
@@ -23,7 +25,6 @@ pub struct SvgWindow {
     image: Option<egui::ColorImage>,
     #[serde(skip)]
     watch_tx: Option<tokio::sync::watch::Sender<(egui::Context, egui::Id)>>,
-    pub(crate) visible: bool,
     #[serde(default)]
     pub(crate) output_type: crate::OutputType,
     index: usize,
@@ -47,7 +48,6 @@ impl fmt::Debug for SvgWindow {
             .field("scale", &self.scale)
             // Skip complex channels or internal types entirely if irrelevant
             .field("watch_tx", &"Option<Sender>")
-            .field("visible", &self.visible)
             .finish_non_exhaustive() // Indicates other fields exist (index, initialized)
     }
 }
@@ -65,7 +65,6 @@ impl SvgWindow {
             prev_size: None,
             scale: 1.5,
             image: None,
-            visible: true,
             output_type: crate::OutputType::Pikchr,
             initialized: false,
             watch_tx: None,
@@ -138,7 +137,16 @@ impl MiniWindow for SvgWindow {
             .frame(egui::Frame::window(&ctx.style()).inner_margin(0.0))
     }
     fn should_show(&self) -> bool {
-        self.diagram_texture.is_some() && self.visible
+        self.diagram_texture.is_some()
+    }
+
+    fn close_requested(
+        &mut self,
+        ctx: &egui::Context,
+        _command_only: bool,
+        tx: tokio::sync::mpsc::Sender<Msg>,
+    ) {
+        let _ = tx.try_send(Msg::SetRenderEnabled(ctx.clone(), self.owner_id, false));
     }
 
     fn should_be_listed(&self) -> bool {
@@ -238,5 +246,39 @@ impl mini_window::NormalWindow for SvgWindow {
     }
 }
 impl_id!(SvgWindow, id);
-impl_visible!(SvgWindow, visible);
+impl Visible for SvgWindow {
+    fn visible(&self) -> bool {
+        true
+    }
+
+    fn set_visible(&mut self, _new: bool) {}
+}
 setter_getter_for_trait! { (name => String | name.clone() => String) for SvgWindow as name for mini_window::HasName }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn closing_render_window_turns_off_owner_rendering() {
+        let owner_id = egui::Id::new("owner");
+        let mut window = SvgWindow::new(egui::Id::new("render"), owner_id);
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+
+        window.close_requested(&egui::Context::default(), true, tx);
+
+        assert!(matches!(
+            rx.try_recv(),
+            Ok(Msg::SetRenderEnabled(_, id, false)) if id == owner_id
+        ));
+    }
+
+    #[test]
+    fn render_window_has_no_independent_visibility_state() {
+        let mut window = SvgWindow::new(egui::Id::new("render"), egui::Id::new("owner"));
+
+        window.set_visible(false);
+
+        assert!(window.visible());
+    }
+}
