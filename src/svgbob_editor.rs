@@ -13,6 +13,58 @@ use crate::{
     setter_getter_for_trait,
 };
 
+type EditSnapshot = (egui::text::CCursorRange, String);
+type EditUndoer = egui::util::undoer::Undoer<EditSnapshot>;
+
+#[derive(Clone, Copy)]
+enum HistoryDirection {
+    Undo,
+    Redo,
+}
+
+fn record_semantic_edit(
+    undoer: &mut EditUndoer,
+    time: f64,
+    before: &EditSnapshot,
+    after: &EditSnapshot,
+) {
+    if before == after {
+        return;
+    }
+
+    undoer.add_undo(before);
+    // Feeding the changed state clears any redo branch before the new
+    // checkpoint is added.
+    undoer.feed_state(time, after);
+    undoer.add_undo(after);
+}
+
+fn step_semantic_history(
+    undoer: &mut EditUndoer,
+    current: &EditSnapshot,
+    direction: HistoryDirection,
+) -> Option<EditSnapshot> {
+    let current_content = trimmed_canvas(&current.1);
+    let mut candidate = current.clone();
+    let mut moved = false;
+
+    loop {
+        let Some(next) = (match direction {
+            HistoryDirection::Undo => undoer.undo(&candidate),
+            HistoryDirection::Redo => undoer.redo(&candidate),
+        })
+        .cloned() else {
+            return moved.then_some(candidate);
+        };
+        moved = true;
+        candidate = next;
+
+        if trimmed_canvas(&candidate.1) != current_content {
+            return Some(candidate);
+        }
+    }
+}
+
 /// A dedicated ASCII-art editor. It is permanently rendered by Svgbob and has
 /// its own binding hooks, separate from Pikchr and the generator editors.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -272,6 +324,7 @@ impl SvgbobEditor {
             return false;
         };
 
+        let before = (range, self.content.clone());
         let (content, cursor, last_input_position) = replace_text(
             self.content.clone(),
             range,
@@ -279,13 +332,20 @@ impl SvgbobEditor {
             self.last_input_position,
         );
         let content_changed = content != self.content;
+        let cursor_range = egui::text::CCursorRange::one(egui::text::CCursor::new(cursor));
+        if content_changed {
+            let mut undoer = state.undoer();
+            record_semantic_edit(
+                &mut undoer,
+                ui.input(|input| input.time),
+                &before,
+                &(cursor_range, content.clone()),
+            );
+            state.set_undoer(undoer);
+        }
         self.content = content;
         self.last_input_position = last_input_position;
-        state
-            .cursor
-            .set_char_range(Some(egui::text::CCursorRange::one(
-                egui::text::CCursor::new(cursor),
-            )));
+        state.cursor.set_char_range(Some(cursor_range));
         state.store(ctx, editor_id);
         content_changed
     }
@@ -329,16 +389,24 @@ impl SvgbobEditor {
             return false;
         }
 
+        let before = (range, self.content.clone());
         let Some((content, cursor)) = replace_backspace(&self.content, range.primary.index) else {
             return false;
         };
         let content_changed = content != self.content;
+        let cursor_range = egui::text::CCursorRange::one(egui::text::CCursor::new(cursor));
+        if content_changed {
+            let mut undoer = state.undoer();
+            record_semantic_edit(
+                &mut undoer,
+                ui.input(|input| input.time),
+                &before,
+                &(cursor_range, content.clone()),
+            );
+            state.set_undoer(undoer);
+        }
         self.content = content;
-        state
-            .cursor
-            .set_char_range(Some(egui::text::CCursorRange::one(
-                egui::text::CCursor::new(cursor),
-            )));
+        state.cursor.set_char_range(Some(cursor_range));
         state.store(ctx, editor_id);
         content_changed
     }
@@ -386,18 +454,27 @@ impl SvgbobEditor {
             _ => unreachable!("rectangle input was filtered above"),
         };
 
+        let before = (range, self.content.clone());
         let primary_row = grid_position(&self.content, range.primary.index).0;
         let (content, cursor) = replace_rectangle(&self.content, bounds, primary_row, &replacement);
+        let content_changed = content != self.content;
+        let cursor_range = egui::text::CCursorRange::one(egui::text::CCursor::new(cursor));
+        if content_changed {
+            let mut undoer = state.undoer();
+            record_semantic_edit(
+                &mut undoer,
+                ui.input(|input| input.time),
+                &before,
+                &(cursor_range, content.clone()),
+            );
+            state.set_undoer(undoer);
+        }
         self.content = content;
         self.rectangle_selection = false;
         self.inclusive_rectangle = false;
-        state
-            .cursor
-            .set_char_range(Some(egui::text::CCursorRange::one(
-                egui::text::CCursor::new(cursor),
-            )));
+        state.cursor.set_char_range(Some(cursor_range));
         state.store(ctx, editor_id);
-        true
+        content_changed
     }
 
     fn handle_column_paste(&mut self, ctx: &Context, ui: &mut Ui, editor_id: egui::Id) -> bool {
@@ -423,15 +500,87 @@ impl SvgbobEditor {
             return false;
         };
 
+        let before = (range, self.content.clone());
         let (content, cursor) = paste_at_column(&self.content, range.primary.index, &paste);
+        let content_changed = content != self.content;
+        let cursor_range = egui::text::CCursorRange::one(egui::text::CCursor::new(cursor));
+        if content_changed {
+            let mut undoer = state.undoer();
+            record_semantic_edit(
+                &mut undoer,
+                ui.input(|input| input.time),
+                &before,
+                &(cursor_range, content.clone()),
+            );
+            state.set_undoer(undoer);
+        }
         self.content = content;
-        state
-            .cursor
-            .set_char_range(Some(egui::text::CCursorRange::one(
-                egui::text::CCursor::new(cursor),
-            )));
+        state.cursor.set_char_range(Some(cursor_range));
         state.store(ctx, editor_id);
-        true
+        content_changed
+    }
+
+    fn handle_undo_redo(&mut self, ctx: &Context, ui: &mut Ui, editor_id: egui::Id) -> bool {
+        if !ui.memory(|memory| memory.has_focus(editor_id)) {
+            return false;
+        }
+
+        let direction = ui.input(|input| {
+            if input.key_pressed(egui::Key::Z)
+                && input
+                    .modifiers
+                    .matches_logically(egui::Modifiers::SHIFT | egui::Modifiers::COMMAND)
+                || input.key_pressed(egui::Key::Y)
+                    && input.modifiers.matches_logically(egui::Modifiers::COMMAND)
+            {
+                Some(HistoryDirection::Redo)
+            } else if input.key_pressed(egui::Key::Z)
+                && input.modifiers.matches_logically(egui::Modifiers::COMMAND)
+            {
+                Some(HistoryDirection::Undo)
+            } else {
+                None
+            }
+        });
+        let Some(direction) = direction else {
+            return false;
+        };
+
+        ui.input_mut(|input| match direction {
+            HistoryDirection::Undo => {
+                input.consume_key(egui::Modifiers::COMMAND, egui::Key::Z);
+            },
+            HistoryDirection::Redo => {
+                input.consume_key(
+                    egui::Modifiers::SHIFT | egui::Modifiers::COMMAND,
+                    egui::Key::Z,
+                );
+                input.consume_key(egui::Modifiers::COMMAND, egui::Key::Y);
+            },
+        });
+
+        let Some(mut state) = egui::TextEdit::load_state(ctx, editor_id) else {
+            return false;
+        };
+        let Some(range) = state.cursor.char_range() else {
+            return false;
+        };
+        let current = (range, self.content.clone());
+        let mut undoer = state.undoer();
+        let Some((cursor_range, content)) = step_semantic_history(&mut undoer, &current, direction)
+        else {
+            return false;
+        };
+        let content_changed = trimmed_canvas(&content) != trimmed_canvas(&self.content);
+
+        self.content = content;
+        self.rectangle_selection = false;
+        self.inclusive_rectangle = false;
+        self.last_input_position = None;
+        state.cursor.set_char_range(Some(cursor_range));
+        state.set_undoer(undoer);
+        state.store(ctx, editor_id);
+        content_changed
     }
 }
 
@@ -748,7 +897,7 @@ fn replace_text(
                                 column as isize - previous_column as isize,
                             ),
                         )
-                    }
+                    },
                     _ => (row, column + 1),
                 };
                 last_input_position = Some(input_position);
@@ -827,6 +976,7 @@ impl GenericEditor for SvgbobEditor {
             ui.visuals_mut().selection.bg_fill = egui::Color32::TRANSPARENT;
             ui.visuals_mut().selection.stroke.color = ui.visuals().text_color();
 
+            let history_changed = self.handle_undo_redo(&ctx, ui, editor_id);
             let rectangle_changed = self.handle_rectangle_input(&ctx, ui, editor_id);
             let paste_changed = self.handle_column_paste(&ctx, ui, editor_id);
             let backspace_changed = self.handle_replace_backspace(&ctx, ui, editor_id);
@@ -864,7 +1014,12 @@ impl GenericEditor for SvgbobEditor {
                 ui.scroll_to_rect(cell, None);
             }
 
-            if rectangle_changed || paste_changed || backspace_changed || replace_changed {
+            if history_changed
+                || rectangle_changed
+                || paste_changed
+                || backspace_changed
+                || replace_changed
+            {
                 output.response.mark_changed();
             }
 
@@ -970,7 +1125,27 @@ impl GenericEditor for SvgbobEditor {
 
     // ASCII art should not inherit indentation when adding a new line.
     fn handle_enter(&mut self, ctx: &Context, ui: &mut Ui, editor_id: egui::Id) {
+        let before = egui::TextEdit::load_state(ctx, editor_id).and_then(|state| {
+            state
+                .cursor
+                .char_range()
+                .map(|range| (range, self.content.clone()))
+        });
         self.handle_indent(ctx, ui, editor_id, |_| String::new());
+        let Some(before) = before else {
+            return;
+        };
+        let Some(mut state) = egui::TextEdit::load_state(ctx, editor_id) else {
+            return;
+        };
+        let Some(range) = state.cursor.char_range() else {
+            return;
+        };
+        let after = (range, self.content.clone());
+        let mut undoer = state.undoer();
+        record_semantic_edit(&mut undoer, ui.input(|input| input.time), &before, &after);
+        state.set_undoer(undoer);
+        state.store(ctx, editor_id);
     }
 
     fn handle_tab_binding(&mut self, _ctx: &Context, ui: &mut Ui, editor_id: egui::Id) -> bool {
@@ -1482,5 +1657,126 @@ mod tests {
         );
 
         assert_eq!(grid_position(&content, cursor), (3, 3));
+    }
+
+    fn snapshot(content: &str, cursor: usize) -> EditSnapshot {
+        (
+            egui::text::CCursorRange::one(egui::text::CCursor::new(cursor)),
+            content.to_owned(),
+        )
+    }
+
+    #[test]
+    fn custom_edits_are_distinct_undo_and_redo_steps() {
+        let first = snapshot("A", 1);
+        let second = snapshot("AB", 2);
+        let third = snapshot("ABC", 3);
+        let mut undoer = EditUndoer::default();
+
+        record_semantic_edit(&mut undoer, 0.0, &first, &second);
+        record_semantic_edit(&mut undoer, 0.1, &second, &third);
+
+        let second_again =
+            step_semantic_history(&mut undoer, &third, HistoryDirection::Undo).unwrap();
+        assert_eq!(second_again, second);
+
+        let first_again =
+            step_semantic_history(&mut undoer, &second_again, HistoryDirection::Undo).unwrap();
+        assert_eq!(first_again, first);
+
+        let second_redone =
+            step_semantic_history(&mut undoer, &first_again, HistoryDirection::Redo).unwrap();
+        assert_eq!(second_redone, second);
+
+        let third_redone =
+            step_semantic_history(&mut undoer, &second_redone, HistoryDirection::Redo).unwrap();
+        assert_eq!(third_redone, third);
+    }
+
+    #[test]
+    fn custom_edit_after_undo_clears_the_redo_branch() {
+        let first = snapshot("A", 1);
+        let discarded = snapshot("AB", 2);
+        let replacement = snapshot("AC", 2);
+        let mut undoer = EditUndoer::default();
+
+        record_semantic_edit(&mut undoer, 0.0, &first, &discarded);
+        let first_again =
+            step_semantic_history(&mut undoer, &discarded, HistoryDirection::Undo).unwrap();
+        record_semantic_edit(&mut undoer, 0.1, &first_again, &replacement);
+
+        assert!(
+            step_semantic_history(&mut undoer, &replacement, HistoryDirection::Redo,).is_none()
+        );
+    }
+
+    #[test]
+    fn undo_skips_padding_only_canvas_states() {
+        let first = snapshot("A", 1);
+        let second = snapshot("AB ", 2);
+        let second_with_more_padding = snapshot("AB   \n     ", 2);
+        let mut undoer = EditUndoer::default();
+        undoer.add_undo(&first);
+        undoer.add_undo(&second);
+        undoer.add_undo(&second_with_more_padding);
+
+        let undone = step_semantic_history(
+            &mut undoer,
+            &second_with_more_padding,
+            HistoryDirection::Undo,
+        )
+        .unwrap();
+
+        assert_eq!(trimmed_canvas(&undone.1), "A");
+    }
+
+    #[test]
+    fn replace_mode_undoes_each_rapid_input_and_redoes_it() {
+        use egui_kittest::Harness;
+
+        let editor_id = egui::Id::new("undo_editor");
+        let mut editor =
+            SvgbobEditor::new(egui::Id::new("svgbob_undo"), egui::Id::new("render"));
+        editor.content = "ABC".to_owned();
+        editor.mode = SvgbobEditMode::Replace;
+        let mut harness = Harness::new_ui_state(
+            move |ui, editor| {
+                editor.editor_spec(editor_id, ui);
+            },
+            editor,
+        );
+        harness.run();
+
+        let mut state = egui::TextEdit::load_state(&harness.ctx, editor_id).unwrap();
+        state
+            .cursor
+            .set_char_range(Some(egui::text::CCursorRange::one(
+                egui::text::CCursor::new(1),
+            )));
+        state.store(&harness.ctx, editor_id);
+        harness
+            .ctx
+            .memory_mut(|memory| memory.request_focus(editor_id));
+
+        harness.event(egui::Event::Text("X".to_owned()));
+        harness.run();
+        harness.event(egui::Event::Text("Y".to_owned()));
+        harness.run();
+        assert_eq!(trimmed_canvas(&harness.state().content), "AXY");
+
+        harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+        harness.run();
+        assert_eq!(trimmed_canvas(&harness.state().content), "AXC");
+
+        harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+        harness.run();
+        assert_eq!(trimmed_canvas(&harness.state().content), "ABC");
+
+        harness.key_press_modifiers(
+            egui::Modifiers::SHIFT | egui::Modifiers::COMMAND,
+            egui::Key::Z,
+        );
+        harness.run();
+        assert_eq!(trimmed_canvas(&harness.state().content), "AXC");
     }
 }
