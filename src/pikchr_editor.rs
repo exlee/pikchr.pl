@@ -124,7 +124,6 @@ impl MiniWindow for PikchrEditor {
         true
     }
 }
-impl PikchrEditor {}
 impl Editor for PikchrEditor {}
 impl_render!(PikchrEditor, render);
 impl crate::mini_window::EditorType for PikchrEditor {
