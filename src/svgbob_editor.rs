@@ -41,6 +41,10 @@ pub struct SvgbobEditor {
     /// remember its position and explicitly reveal it when it moves.
     #[serde(skip)]
     last_cursor_position: Option<usize>,
+    /// Cell where the previous character was typed. Used to continue a
+    /// connected row or column when typing into the canvas.
+    #[serde(skip)]
+    last_input_position: Option<(usize, usize)>,
 }
 
 fn default_render() -> bool {
@@ -143,6 +147,7 @@ impl SvgbobEditor {
             rectangle_selection: false,
             inclusive_rectangle: false,
             last_cursor_position: None,
+            last_input_position: None,
         }
     }
 
@@ -267,9 +272,15 @@ impl SvgbobEditor {
             return false;
         };
 
-        let (content, cursor) = replace_text(self.content.clone(), range, &text);
+        let (content, cursor, last_input_position) = replace_text(
+            self.content.clone(),
+            range,
+            &text,
+            self.last_input_position,
+        );
         let content_changed = content != self.content;
         self.content = content;
+        self.last_input_position = last_input_position;
         state
             .cursor
             .set_char_range(Some(egui::text::CCursorRange::one(
@@ -701,7 +712,8 @@ fn replace_text(
     mut content: String,
     range: egui::text::CCursorRange,
     text: &str,
-) -> (String, usize) {
+    mut last_input_position: Option<(usize, usize)>,
+) -> (String, usize, Option<(usize, usize)>) {
     debug_assert!(
         range.is_empty(),
         "Replace mode handles selections in TextEdit"
@@ -713,6 +725,7 @@ fn replace_text(
             '\n' => {
                 row += 1;
                 column = 0;
+                last_input_position = None;
             },
             character => {
                 // Materialize the target cell, not just its preceding cursor
@@ -722,12 +735,30 @@ fn replace_text(
                 let start_byte = byte_index(&content, cell);
                 let end_byte = byte_index(&content, cell + 1);
                 content.replace_range(start_byte..end_byte, &character.to_string());
-                column += 1;
+                let input_position = (row, column);
+                let next = match last_input_position {
+                    Some((previous_row, previous_column))
+                        if row.abs_diff(previous_row) <= 1
+                            && column.abs_diff(previous_column) <= 1
+                            && (row, column) != (previous_row, previous_column) =>
+                    {
+                        (
+                            row.saturating_add_signed(row as isize - previous_row as isize),
+                            column.saturating_add_signed(
+                                column as isize - previous_column as isize,
+                            ),
+                        )
+                    }
+                    _ => (row, column + 1),
+                };
+                last_input_position = Some(input_position);
+                row = next.0;
+                column = next.1;
             },
         }
     }
     let (_, cursor) = move_to_grid(&mut content, row, column);
-    (content, cursor)
+    (content, cursor, last_input_position)
 }
 
 fn replace_backspace(content: &str, cursor: usize) -> Option<(String, usize)> {
@@ -736,7 +767,7 @@ fn replace_backspace(content: &str, cursor: usize) -> Option<(String, usize)> {
     let mut content = content.to_owned();
     let (_, target) = move_to_grid(&mut content, row, target_column);
     let range = egui::text::CCursorRange::one(egui::text::CCursor::new(target));
-    let (content, _) = replace_text(content, range, " ");
+    let (content, _, _) = replace_text(content, range, " ", None);
     Some((content, target))
 }
 
@@ -1386,7 +1417,7 @@ mod tests {
     fn replace_mode_overwrites_cells_and_advances() {
         let range = egui::text::CCursorRange::one(egui::text::CCursor::new(1));
 
-        let (content, cursor) = replace_text("abcd".to_owned(), range, "XY");
+        let (content, cursor, _) = replace_text("abcd".to_owned(), range, "XY", None);
 
         assert_eq!(content, "aXYd");
         assert_eq!(cursor, 3);
@@ -1417,9 +1448,39 @@ mod tests {
     fn replace_mode_grows_the_canvas_at_end_of_line() {
         let range = egui::text::CCursorRange::one(egui::text::CCursor::new(2));
 
-        let (content, cursor) = replace_text("ab".to_owned(), range, "X");
+        let (content, cursor, _) = replace_text("ab".to_owned(), range, "X", None);
 
         assert_eq!(content, "abX");
         assert_eq!(cursor, 3);
+    }
+
+    #[test]
+    fn replace_mode_continues_the_relation_between_adjacent_inputs() {
+        let first = egui::text::CCursorRange::one(egui::text::CCursor::new(0));
+        let (content, _, last) = replace_text("1234\n5678\n90XY".to_owned(), first, "A", None);
+        let second = egui::text::CCursorRange::one(egui::text::CCursor::new(6));
+        let (content, cursor, last) = replace_text(content, second, "B", last);
+
+        assert_eq!(grid_position(&content, cursor), (2, 2));
+
+        let moved = egui::text::CCursorRange::one(egui::text::CCursor::new(7));
+        let (_, cursor, _) = replace_text(content, moved, "C", last);
+        assert_eq!(grid_position("1234\n5678\n90XY", cursor), (1, 3));
+    }
+
+    #[test]
+    fn replace_mode_continues_the_exact_input_vector() {
+        let range = egui::text::CCursorRange::one(egui::text::CCursor::new(6));
+        let (_, _, last) = replace_text("1234\n5678\n90XY".to_owned(), range, "A", None);
+
+        let diagonal = egui::text::CCursorRange::one(egui::text::CCursor::new(12));
+        let (content, cursor, _) = replace_text(
+            "1234\n5678\n90XY".to_owned(),
+            diagonal,
+            "B",
+            last,
+        );
+
+        assert_eq!(grid_position(&content, cursor), (3, 3));
     }
 }

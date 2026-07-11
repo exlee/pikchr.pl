@@ -126,6 +126,9 @@ fn topic_help(ui: &mut egui::Ui, topic: HelpTopic, tx: &Sender<Msg>) {
                 "This dedicated editor uses a block cursor and canvas-style arrows: Right and Down can extend ragged lines or add rows. Its Mode menu offers Insert (the default) and Replace; Replace overwrites each canvas cell as you type and then advances the block cursor.",
             );
             ui.label(
+                "In Replace mode, the cursor remembers the positions of the two most recent inputs. If their row and column differences are each at most one, it repeats that exact vector: (1,1) then (1,2) moves to (1,3), while (1,1) then (2,2) moves to (3,3). Larger gaps use normal next-cell movement.",
+            );
+            ui.label(
                 "It also keeps its own bindings: Enter does not carry indentation, and Tab/Cmd-Ctrl-R are available for Svgbob-specific bindings.",
             );
         },
