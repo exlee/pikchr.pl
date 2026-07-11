@@ -36,6 +36,10 @@ pub struct SvgbobEditor {
     rectangle_selection: bool,
     #[serde(skip)]
     inclusive_rectangle: bool,
+    /// Custom canvas bindings update egui's cursor before `TextEdit` runs, so
+    /// remember its position and explicitly reveal it when it moves.
+    #[serde(skip)]
+    last_cursor_position: Option<usize>,
 }
 
 fn default_render() -> bool {
@@ -58,6 +62,7 @@ impl SvgbobEditor {
             mode: SvgbobEditMode::default(),
             rectangle_selection: false,
             inclusive_rectangle: false,
+            last_cursor_position: None,
         }
     }
 
@@ -667,7 +672,34 @@ impl GenericEditor for SvgbobEditor {
                 .code_editor()
                 .desired_width(f32::INFINITY)
                 .id(editor_id)
+                .layouter(&mut |ui, text, _wrap_width| {
+                    let font_id = egui::TextStyle::Monospace.resolve(ui.style());
+                    let text_color = ui.visuals().text_color();
+                    ui.fonts_mut(|fonts| {
+                        fonts.layout_no_wrap(text.as_str().to_owned(), font_id, text_color)
+                    })
+                })
                 .show(ui);
+
+            let cursor_position = output
+                .cursor_range
+                .map(|cursor_range| cursor_range.primary.index);
+            let cursor_moved = cursor_position != self.last_cursor_position;
+            self.last_cursor_position = cursor_position;
+
+            if cursor_moved && let Some(cursor_range) = output.cursor_range {
+                let cursor_rect = output
+                    .galley
+                    .pos_from_cursor(cursor_range.primary)
+                    .translate(output.galley_pos.to_vec2());
+                let font_id = egui::TextStyle::Monospace.resolve(ui.style());
+                let cell_width = ui.fonts_mut(|fonts| fonts.glyph_width(&font_id, ' '));
+                let cell = egui::Rect::from_min_size(
+                    cursor_rect.min,
+                    egui::vec2(cell_width, cursor_rect.height()),
+                );
+                ui.scroll_to_rect(cell, None);
+            }
 
             if rectangle_changed || paste_changed || backspace_changed || replace_changed {
                 output.response.mark_changed();
@@ -927,6 +959,19 @@ mod tests {
         assert_eq!(editor.output_type(), crate::OutputType::Svgbob);
         assert!(!editor.has_output_selector());
         assert_eq!(editor.mode, SvgbobEditMode::Insert);
+    }
+
+    #[test]
+    fn editor_does_not_wrap_long_canvas_rows() {
+        egui::__run_test_ui(|ui| {
+            let mut editor =
+                SvgbobEditor::new(egui::Id::new("svgbob"), egui::Id::new("render"));
+            editor.content = "012345678901234567890123456789".to_owned();
+            ui.set_max_width(40.0);
+            let output = editor.editor_spec(egui::Id::new("editor"), ui);
+
+            assert_eq!(output.galley.rows.len(), 1);
+        });
     }
 
     #[test]
