@@ -46,6 +46,11 @@ pub fn syntax_layouter(
 
     let mut h = syntect::easy::HighlightLines::new(syntax, &theme);
     let default_background = theme.settings.background;
+    let monospace_size = egui::TextStyle::Monospace.resolve(ui.style()).size;
+    // Syntax-highlighted editors historically used 14 points while egui's
+    // default monospace style is 13. Preserve that baseline while allowing a
+    // window-local style to scale the editor.
+    let syntax_font_size = monospace_size * (14.0 / 13.0);
 
     for line in syntect::util::LinesWithEndings::from(text.as_str()) {
         let ranges: Vec<(syntect::highlighting::Style, &str)> =
@@ -75,7 +80,7 @@ pub fn syntax_layouter(
                 text,
                 0.0,
                 egui::TextFormat {
-                    font_id: egui::FontId::monospace(14.0),
+                    font_id: egui::FontId::monospace(syntax_font_size),
                     color,
                     background,
                     italics: style

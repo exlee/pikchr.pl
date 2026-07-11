@@ -104,6 +104,11 @@ fn common_editor_help(
         "Delete the editor from the workspace."
     };
     feature(ui, "Cmd/Ctrl+Close", delete_description);
+    feature(
+        ui,
+        "Zoom In / Zoom out",
+        "Scale only this window. Use the zoom-cancel button to return to the workspace scale.",
+    );
 }
 
 fn reference_help(ui: &mut egui::Ui) {
@@ -215,6 +220,11 @@ fn topic_help(ui: &mut egui::Ui, topic: HelpTopic, tx: &Sender<Msg>) {
                 ui,
                 "Export",
                 "Save or copy SVG, PNG, transparent PNG, or generated source.",
+            );
+            feature(
+                ui,
+                "Zoom In / Zoom out",
+                "Scale only this preview. Use the zoom-cancel button to return to the workspace scale.",
             );
             feature(
                 ui,

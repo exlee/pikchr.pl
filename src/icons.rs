@@ -13,6 +13,9 @@ pub(crate) enum AppIcon {
     #[allow(unused)]
     Delete,
     Rename,
+    ZoomIn,
+    ZoomOut,
+    ZoomReset,
 }
 
 #[derive(Clone, Copy)]
@@ -110,6 +113,9 @@ pub(crate) fn icon_image(icon: AppIcon, tint: egui::Color32) -> egui::Image<'sta
         AppIcon::Save => egui::include_image!("../assets/icons/package-export.svg"),
         AppIcon::Help => egui::include_image!("../assets/icons/help-circle.svg"),
         AppIcon::Rename => egui::include_image!("../assets/icons/writing.svg"),
+        AppIcon::ZoomIn => egui::include_image!("../assets/icons/zoom-in.svg"),
+        AppIcon::ZoomOut => egui::include_image!("../assets/icons/zoom-out.svg"),
+        AppIcon::ZoomReset => egui::include_image!("../assets/icons/zoom-cancel.svg"),
     })
     .fit_to_exact_size(egui::vec2(14.0, 14.0))
     .tint(tint)
@@ -121,10 +127,14 @@ pub(crate) fn icon_button(ui: &mut Ui, icon: AppIcon) -> egui::Response {
 }
 
 pub(crate) fn selectable_icon_button(ui: &mut Ui, icon: AppIcon, selected: bool) -> egui::Response {
+    let button_size = egui::Vec2::splat(ui.spacing().icon_width * (20.0 / 14.0));
     ui.add(
-        egui::Button::image(icon_image(icon, ui.visuals().text_color()))
-            .min_size(egui::vec2(20.0, 20.0))
-            .selected(selected),
+        egui::Button::image(
+            icon_image(icon, ui.visuals().text_color())
+                .fit_to_exact_size(egui::Vec2::splat(ui.spacing().icon_width)),
+        )
+        .min_size(button_size)
+        .selected(selected),
     )
 }
 
@@ -141,6 +151,9 @@ impl AppIcon {
             AppIcon::Help => "Help",
             AppIcon::Delete => "Delete",
             AppIcon::Rename => "Rename",
+            AppIcon::ZoomIn => "Zoom In",
+            AppIcon::ZoomOut => "Zoom out",
+            AppIcon::ZoomReset => "Reset window zoom",
         }
     }
 }

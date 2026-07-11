@@ -10,6 +10,77 @@ use crate::{
     svg, svgbob_editor, tcl_editor,
 };
 
+const WINDOW_ZOOM_STEP: f32 = 0.1;
+const MIN_WINDOW_ZOOM: f32 = 0.5;
+const MAX_WINDOW_ZOOM: f32 = 3.0;
+
+fn window_zoom_id(window_id: egui::Id) -> egui::Id {
+    window_id.with("window_zoom")
+}
+
+pub(crate) fn window_zoom_factor(ctx: &Context, window_id: egui::Id) -> f32 {
+    ctx.data_mut(|data| {
+        data.get_persisted::<f32>(window_zoom_id(window_id))
+            .unwrap_or(1.0)
+    })
+}
+
+fn set_window_zoom_factor(ctx: &Context, window_id: egui::Id, zoom: f32) {
+    ctx.data_mut(|data| {
+        data.insert_persisted(
+            window_zoom_id(window_id),
+            zoom.clamp(MIN_WINDOW_ZOOM, MAX_WINDOW_ZOOM),
+        );
+    });
+    ctx.request_repaint();
+}
+
+fn apply_window_zoom(style: &mut egui::Style, zoom: f32) {
+    for font_id in style.text_styles.values_mut() {
+        font_id.size *= zoom;
+    }
+    style.spacing.item_spacing *= zoom;
+    style.spacing.window_margin *= zoom;
+    style.spacing.menu_margin *= zoom;
+    style.spacing.button_padding *= zoom;
+    style.spacing.interact_size *= zoom;
+    style.spacing.icon_width *= zoom;
+    style.spacing.icon_width_inner *= zoom;
+    style.spacing.icon_spacing *= zoom;
+    style.spacing.indent *= zoom;
+    style.spacing.scroll.bar_width *= zoom;
+    style.spacing.scroll.handle_min_length *= zoom;
+    style.spacing.scroll.floating_width *= zoom;
+    style.visuals.resize_corner_size *= zoom;
+}
+
+fn zoom_icon_button(ui: &mut Ui, icon: AppIcon, enabled: bool) -> egui::Response {
+    ui.add_enabled_ui(enabled, |ui| icon_button(ui, icon)).inner
+}
+
+fn window_zoom_controls(ui: &mut Ui, ctx: &Context, window_id: egui::Id) {
+    let zoom = window_zoom_factor(ctx, window_id);
+    let zoom_out = zoom_icon_button(ui, AppIcon::ZoomOut, zoom > MIN_WINDOW_ZOOM).on_hover_text(
+        format!("Zoom out this window\nCurrent: {:.0}%", zoom * 100.0),
+    );
+    if zoom_out.clicked() {
+        set_window_zoom_factor(ctx, window_id, zoom - WINDOW_ZOOM_STEP);
+    }
+
+    let reset = zoom_icon_button(ui, AppIcon::ZoomReset, (zoom - 1.0).abs() > f32::EPSILON)
+        .on_hover_text("Reset this window to the workspace zoom");
+    if reset.clicked() {
+        set_window_zoom_factor(ctx, window_id, 1.0);
+    }
+
+    let zoom_in = zoom_icon_button(ui, AppIcon::ZoomIn, zoom < MAX_WINDOW_ZOOM).on_hover_text(
+        format!("Zoom In this window\nCurrent: {:.0}%", zoom * 100.0),
+    );
+    if zoom_in.clicked() {
+        set_window_zoom_factor(ctx, window_id, zoom + WINDOW_ZOOM_STEP);
+    }
+}
+
 pub trait Visible {
     fn visible(&self) -> bool;
     fn set_visible(&mut self, new: bool);
@@ -131,6 +202,12 @@ pub trait MiniWindow: Send + Sync + Visible + Id + HasMenu + InnerWindow + Rende
         if !self.should_show() {
             return;
         };
+        let zoom = window_zoom_factor(ctx, self.get_id());
+        let workspace_style = ctx.style();
+        let mut window_style = (*workspace_style).clone();
+        apply_window_zoom(&mut window_style, zoom);
+        ctx.set_style(window_style);
+
         let mut visible = self.visible();
         let window = self.outer_window(ctx).open(&mut visible);
 
@@ -149,6 +226,12 @@ pub trait MiniWindow: Send + Sync + Visible + Id + HasMenu + InnerWindow + Rende
                             ui.add_space(8.0);
                             self.menu(ui, tx.clone());
                         }
+                        ui.add_space(8.0);
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(76.0 * zoom, ui.spacing().interact_size.y),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |ui| window_zoom_controls(ui, ctx, self.get_id()),
+                        );
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if icon_button(ui, AppIcon::Help)
                                 .on_hover_text("Help for this window")
@@ -233,9 +316,10 @@ pub trait MiniWindow: Send + Sync + Visible + Id + HasMenu + InnerWindow + Rende
                 });
                 ui.add_space(2.0 * -ui.spacing().item_spacing.y);
                 ui.separator();
-                self.inner_window(ctx, ui, tx.clone(), background)
+                self.inner_window(ctx, ui, tx.clone(), background);
             });
         });
+        ctx.set_style(workspace_style);
         if self.visible() && !visible {
             let command_only = ctx.input(|i| i.modifiers.command_only());
             self.close_requested(ctx, command_only, tx.clone());
@@ -679,6 +763,128 @@ pub struct EditorWindowView<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct ZoomWindow {
+        id: egui::Id,
+        visible: bool,
+        content: String,
+    }
+
+    impl Visible for ZoomWindow {
+        fn visible(&self) -> bool {
+            self.visible
+        }
+
+        fn set_visible(&mut self, visible: bool) {
+            self.visible = visible;
+        }
+    }
+
+    impl Id for ZoomWindow {
+        fn get_id(&self) -> egui::Id {
+            self.id
+        }
+    }
+
+    impl HasMenu for ZoomWindow {}
+    impl RenderToggle for ZoomWindow {}
+
+    impl InnerWindow for ZoomWindow {
+        fn inner_window(
+            &mut self,
+            _ctx: &Context,
+            ui: &mut Ui,
+            _tx: Sender<Msg>,
+            _background: DiagramBackground,
+        ) {
+            egui::ScrollArea::both()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.add_sized(
+                        ui.available_size(),
+                        egui::TextEdit::multiline(&mut self.content),
+                    );
+                });
+        }
+    }
+
+    impl MiniWindow for ZoomWindow {
+        fn get_title(&self) -> String {
+            "Zoom test".to_owned()
+        }
+
+        fn help_topic(&self) -> HelpTopic {
+            HelpTopic::Overview
+        }
+    }
+
+    #[test]
+    fn window_zoom_is_scoped_by_window_id_and_resets_to_workspace_default() {
+        let ctx = Context::default();
+        let first = egui::Id::new("first-window");
+        let second = egui::Id::new("second-window");
+
+        set_window_zoom_factor(&ctx, first, 1.4);
+        assert!((window_zoom_factor(&ctx, first) - 1.4).abs() < f32::EPSILON);
+        assert!((window_zoom_factor(&ctx, second) - 1.0).abs() < f32::EPSILON);
+
+        set_window_zoom_factor(&ctx, first, 1.0);
+        assert!((window_zoom_factor(&ctx, first) - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn window_zoom_is_clamped_to_supported_range() {
+        let ctx = Context::default();
+        let id = egui::Id::new("window");
+
+        set_window_zoom_factor(&ctx, id, 0.0);
+        assert!((window_zoom_factor(&ctx, id) - MIN_WINDOW_ZOOM).abs() < f32::EPSILON);
+
+        set_window_zoom_factor(&ctx, id, 10.0);
+        assert!((window_zoom_factor(&ctx, id) - MAX_WINDOW_ZOOM).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn zoom_style_does_not_expand_a_window_to_the_workspace_width() {
+        use egui_kittest::Harness;
+
+        let id = egui::Id::new("zoom-window");
+        let (tx, _rx) = tokio::sync::mpsc::channel(8);
+        let mut window = ZoomWindow {
+            id,
+            visible: true,
+            content: "content".to_owned(),
+        };
+        let mut harness = Harness::builder()
+            .with_size(egui::vec2(1200.0, 800.0))
+            .build(move |ctx| {
+                window.show(ctx, tx.clone(), DiagramBackground::White);
+            });
+
+        harness.run_steps(2);
+        let initial = harness
+            .ctx
+            .memory(|memory| memory.area_rect(id).expect("window should be visible"));
+        assert!(
+            initial.width() < 600.0,
+            "unzoomed window filled workspace: {initial:?}"
+        );
+
+        set_window_zoom_factor(&harness.ctx, id, 1.5);
+        harness.run_steps(2);
+        let rect = harness
+            .ctx
+            .memory(|memory| memory.area_rect(id).expect("window should be visible"));
+
+        assert!(
+            rect.width() < 600.0,
+            "zoomed window filled workspace: {rect:?}"
+        );
+        assert!(
+            rect.height() > initial.height(),
+            "outer window chrome did not scale: {initial:?} -> {rect:?}"
+        );
+    }
 
     #[derive(Default)]
     struct WatchHarness {

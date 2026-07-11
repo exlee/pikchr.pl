@@ -20,6 +20,8 @@ pub struct SvgWindow {
     pub svg_string: Option<String>,
     pub initial_size: Vec2,
     pub prev_size: Option<Vec2>,
+    #[serde(skip, default = "default_zoom")]
+    prev_zoom: f32,
     pub scale: f32,
     #[serde(skip)]
     image: Option<egui::ColorImage>,
@@ -32,6 +34,11 @@ pub struct SvgWindow {
     initialized: bool,
     name: String,
 }
+
+fn default_zoom() -> f32 {
+    1.0
+}
+
 impl fmt::Debug for SvgWindow {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SvgWindow")
@@ -63,6 +70,7 @@ impl SvgWindow {
             initial_size: Vec2::from((300.0, 300.0)),
             name: owner_id.short_debug_format(),
             prev_size: None,
+            prev_zoom: default_zoom(),
             scale: 1.5,
             image: None,
             output_type: crate::OutputType::Pikchr,
@@ -86,7 +94,8 @@ impl HasMenu for SvgWindow {
     }
     fn menu(&self, ui: &mut egui::Ui, tx: tokio::sync::mpsc::Sender<Msg>) {
         ui.menu_image_button(
-            icon_image(AppIcon::Export, ui.visuals().text_color()),
+            icon_image(AppIcon::Export, ui.visuals().text_color())
+                .fit_to_exact_size(egui::Vec2::splat(ui.spacing().icon_width)),
             |ui| export_menu(ui, &tx, self),
         );
     }
@@ -203,6 +212,7 @@ impl InnerWindow for SvgWindow {
             return;
         }
         let texture = self.diagram_texture.as_ref().expect("Just checked");
+        let zoom = mini_window::window_zoom_factor(ui.ctx(), self.id);
         let background_color = background.resolve(ui.visuals()).to_opaque();
         egui::Frame::new().inner_margin(10.0).show(ui, |ui| {
             egui::Frame::new()
@@ -211,8 +221,12 @@ impl InnerWindow for SvgWindow {
                 .show(ui, |ui| {
                     ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
                         let available = ui.available_size();
-                        if self.prev_size.is_some() && self.prev_size != Some(available.ceil()) {
-                            self.scale = (available.ceil() / self.initial_size.ceil()).max_elem();
+                        if self.prev_size.is_some()
+                            && (self.prev_size != Some(available.ceil())
+                                || (self.prev_zoom - zoom).abs() > f32::EPSILON)
+                        {
+                            self.scale =
+                                (available.ceil() / self.initial_size.ceil()).max_elem() * zoom;
                             let _ = self
                                 .watch_tx
                                 .as_ref()
@@ -220,6 +234,7 @@ impl InnerWindow for SvgWindow {
                                 .send((ui.ctx().clone(), self.id));
                         }
                         self.prev_size = Some(available.ceil());
+                        self.prev_zoom = zoom;
 
                         ui.set_min_size(available);
 
@@ -232,14 +247,26 @@ impl InnerWindow for SvgWindow {
                         } else {
                             new_size.y = available.x / aspect;
                         }
+                        new_size *= zoom;
 
                         let img = egui::Image::new(texture).fit_to_exact_size(new_size).uv(
                             egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
                         );
 
-                        ui.centered_and_justified(|ui| {
-                            ui.add(img);
-                        });
+                        egui::ScrollArea::both()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                let canvas_size = available.max(new_size);
+                                ui.allocate_ui_with_layout(
+                                    canvas_size,
+                                    egui::Layout::centered_and_justified(
+                                        egui::Direction::LeftToRight,
+                                    ),
+                                    |ui| {
+                                        ui.add(img);
+                                    },
+                                );
+                            });
                     });
                 });
         });
