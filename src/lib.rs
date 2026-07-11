@@ -19,6 +19,9 @@ mod mini_window;
 mod modal;
 mod mruby;
 mod mruby_editor;
+#[cfg(feature = "perf-workloads")]
+#[doc(hidden)]
+pub mod perf_support;
 mod pikchr_editor;
 mod plain_text_editor;
 mod prolog_editor;
@@ -567,6 +570,20 @@ fn overlay_svgbob_at_marker(content: &mut Vec<Vec<char>>, marker: char, value: &
             }
         }
     }
+}
+
+#[cfg(feature = "perf-workloads")]
+pub(crate) fn perf_dependency_workload(size: usize) -> usize {
+    let mut content = (0..size)
+        .map(|row| {
+            let marker = if row % 4 == 0 { 'X' } else { ' ' };
+            format!("{marker}{:width$}", "", width = size.saturating_sub(1))
+                .chars()
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    overlay_svgbob_at_marker(&mut content, 'X', "+---+\n| A |\n+---+");
+    content.iter().map(Vec::len).sum()
 }
 
 fn replace_svgbob_overlays(

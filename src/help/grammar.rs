@@ -756,6 +756,19 @@ fn visible_groups(
     out
 }
 
+#[cfg(feature = "perf-workloads")]
+pub(crate) fn perf_layout_workload(wrap_width: f32, viewports: usize) -> usize {
+    let blocks = grammar_blocks();
+    let heights = estimated_block_heights(blocks, wrap_width);
+    let total = heights.iter().sum::<f32>() + blocks.len() as f32 * GRAMMAR_BLOCK_SPACING;
+    (0..viewports)
+        .map(|step| {
+            let min = total * step as f32 / viewports.max(1) as f32;
+            visible_groups(blocks, &heights, min, min + 900.0).len()
+        })
+        .sum()
+}
+
 fn estimated_group_height(blocks: &[Block], wrap_width: f32) -> f32 {
     let Some(block) = blocks.first() else {
         return 1.0;

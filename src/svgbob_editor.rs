@@ -920,6 +920,32 @@ fn replace_backspace(content: &str, cursor: usize) -> Option<(String, usize)> {
     Some((content, target))
 }
 
+#[cfg(feature = "perf-workloads")]
+pub(crate) fn perf_canvas_workload(rows: usize, columns: usize) -> usize {
+    let source = (0..rows)
+        .map(|row| {
+            (0..columns)
+                .map(|column| if (row + column) % 17 == 0 { '+' } else { ' ' })
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut content = fitted_canvas(&source, rows + 8, columns + 8);
+    let (_, cursor) = move_to_grid(&mut content, rows / 2, columns / 2);
+    let range = egui::text::CCursorRange::one(egui::text::CCursor::new(cursor));
+    let (content, cursor, _) = replace_text(content, range, "DiagramIDE", None);
+    let (row, column) = grid_position(&content, cursor);
+    let bounds = (
+        row.saturating_sub(4),
+        (row + 4).min(rows.saturating_sub(1)),
+        column.saturating_sub(4),
+        column + 4,
+    );
+    let selected = rectangle_text(&content, bounds);
+    let (content, _) = replace_rectangle(&content, bounds, row, &selected);
+    trimmed_canvas(&content).len()
+}
+
 impl EditorWindow for SvgbobEditor {
     fn get_editor_window(&self) -> mini_window::EditorWindowView<'_> {
         mini_window::EditorWindowView {
@@ -1349,10 +1375,12 @@ mod tests {
     #[test]
     fn visible_cells_never_overflows_the_viewport() {
         assert_eq!(visible_cells(100.0, 4.0, 18.0), 5);
-        assert!(5.0 * 18.0 + 4.0 <= 100.0);
+        let cells = visible_cells(100.0, 4.0, 18.0) as f32;
+        assert!(cells * 18.0 + 4.0 <= 100.0);
 
         assert_eq!(visible_cells(100.0, 8.0, 8.0), 11);
-        assert!(11.0 * 8.0 + 8.0 <= 100.0);
+        let cells = visible_cells(100.0, 8.0, 8.0) as f32;
+        assert!(cells * 8.0 + 8.0 <= 100.0);
     }
 
     #[test]

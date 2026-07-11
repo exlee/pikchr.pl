@@ -1,7 +1,7 @@
 use eframe::egui::{self, Context, Ui};
 use tokio::sync::mpsc::Sender;
 
-mod grammar;
+pub(crate) mod grammar;
 mod guide;
 
 use grammar::{GrammarViewState, render_grammar};

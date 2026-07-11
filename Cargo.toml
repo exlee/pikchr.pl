@@ -7,6 +7,12 @@ include = ["LICENSE", "NOTICE", "src/**/*", "assets/**/*"]
 
 [features]
 profile = ["dep:tracing-tracy", "dep:tracy-client"]
+perf-workloads = []
+
+[[bench]]
+name = "interaction"
+harness = false
+required-features = ["perf-workloads"]
 
 [dependencies]
 eframe = { version = "0.33.3", features = ["persistence", "wgpu", "accesskit", "wayland", "x11", "default_fonts"] , default-features = false}
