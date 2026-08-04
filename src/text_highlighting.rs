@@ -72,7 +72,7 @@ pub fn syntax_layouter(
                 .font_style
                 .contains(syntect::highlighting::FontStyle::UNDERLINE)
             {
-                egui::Stroke::new(1.0, color)
+                egui::Stroke::new(1.0_f32, color)
             } else {
                 egui::Stroke::NONE
             };

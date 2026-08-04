@@ -40,7 +40,7 @@ pub(crate) fn custom_icon(
     if ui.is_rect_visible(rect) {
         let visuals = ui.style().interact(&response);
         let painter = ui.painter_at(rect);
-        let stroke = egui::Stroke::new(1.35, color.unwrap_or(visuals.fg_stroke.color));
+        let stroke = egui::Stroke::new(1.35_f32, color.unwrap_or(visuals.fg_stroke.color));
         let center = rect.center();
 
         match icon {
@@ -53,7 +53,7 @@ pub(crate) fn custom_icon(
                 if active {
                     painter.circle_filled(center, 3.6, dot_color);
                 } else {
-                    painter.circle_stroke(center, 3.2, egui::Stroke::new(1.1, dot_color));
+                    painter.circle_stroke(center, 3.2, egui::Stroke::new(1.1_f32, dot_color));
                 }
             },
             CustomIcon::Rename => {

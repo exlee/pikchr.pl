@@ -35,7 +35,6 @@ pub(crate) struct PrologRuntime {
 macro_rules! get_runtime_impl {
     (
         runtime: $runtime:ident,
-        async_support: $async_support:literal,
         linker_fn: $linker_fn:ident
 
 
@@ -43,7 +42,6 @@ macro_rules! get_runtime_impl {
         fn get_runtime() -> &'static PrologRuntime {
             $runtime.get_or_init(|| {
                 let mut config = wasmtime::Config::new();
-                config.async_support($async_support);
                 config.consume_fuel(true);
                 let engine = wasmtime::Engine::new(&config).expect("Failed to create async engine");
                 let module = if cfg!(precompiled_wasm) {
@@ -132,7 +130,6 @@ pub struct Engine;
 impl Engine {
     get_runtime_impl!(
         runtime: RUNTIME_SYNC,
-        async_support: false,
         linker_fn: add_to_linker_sync
     );
 
@@ -153,7 +150,6 @@ impl Engine {
 impl EngineAsync {
     get_runtime_impl!(
         runtime: RUNTIME_ASYNC,
-        async_support: true,
         linker_fn: add_to_linker_async
     );
     /// Initialize engine

@@ -59,10 +59,10 @@ copied to the clipboard.
 ## Installation
 
 Build from source (`cargo install --path .` installs DiagramIDE, the default root
-binary), grab the [1.0.0 release][release-1-0-0], or try the
+binary), grab the [1.1.0 release][release-1-1-0], or try the
 [Nightly Release][nightly].
 
-[release-1-0-0]: https://github.com/exlee/diagramide/releases/tag/v1.0.0
+[release-1-1-0]: https://github.com/exlee/diagramide/releases/tag/v1.1.0
 [nightly]: https://github.com/exlee/diagramide/releases/tag/latest
 
 ## Satellite projects

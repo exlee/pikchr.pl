@@ -2,6 +2,36 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-04
+
+### Added
+
+- Add per-editor Pikchr and Svgbob output selection with renderer switching.
+- Add a dedicated Svgbob canvas editor with Insert and Replace modes, rectangle selection, keyboard navigation, generated-reference overlays, and directional Replace-mode continuation.
+- Add file and clipboard export actions for rendered images and generated source.
+- Add per-window zoom controls.
+- Add interaction performance workloads and benchmark baselines.
+
+### Changed
+
+- Keep Svgbob canvases unwrapped and reveal the cursor within the viewport.
+- Adopt Tabler icons and add output-type and edit-mode indicators.
+- Improve help-guide readability and document the editor and export behavior.
+- Optimize measured interaction paths and reorganize serialization, message handling, grammar help, mini-window, and Svgbob components.
+- Update Wasmtime and WASI to 46.0.2 and refresh vulnerable transitive dependencies.
+
+### Fixed
+
+- Restore RON compatibility and recover safely from incompatible persisted workspaces.
+- Fix Svgbob undo and redo history.
+- Prevent dropped render updates and synchronize render-window visibility with editor toggles.
+- Fix column paste truncating canvas rows.
+- Improve Svgbob keyboard, rectangle-selection, viewport, and canvas behavior.
+
+### Security
+
+- Update dependencies to resolve the RustSec vulnerabilities reported before the 1.1.0 release.
+
 ## [1.0.0] - 2026-06-28
 
 Initial release of the DiagramIDE workspace.

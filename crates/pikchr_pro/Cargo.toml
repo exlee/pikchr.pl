@@ -29,7 +29,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true, optional = true }
 wasmtime = { workspace = true }
 wasmtime-wasi = { workspace = true }
-trealla-wasm = { version = "1.0.0", path = "../trealla_wasm" }
+trealla-wasm = { version = "1.1.0", path = "../trealla_wasm" }
 
 
 [build-dependencies]

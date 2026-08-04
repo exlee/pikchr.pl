@@ -252,7 +252,7 @@ fn shades_of_purple() -> DiagramTheme {
     visuals.error_fg_color = hex("#EC3A37").unwrap();
     visuals.window_fill = bg;
     visuals.panel_fill = bg;
-    visuals.window_stroke = egui::Stroke::new(1.0, secondary);
+    visuals.window_stroke = egui::Stroke::new(1.0_f32, secondary);
     visuals.window_shadow = egui::epaint::Shadow {
         color: Color32::from_black_alpha(48),
         ..visuals.window_shadow

@@ -11,9 +11,9 @@ use crate::{
 };
 
 mod contracts;
-pub use contracts::*;
 #[cfg(test)]
 use contracts::forward_watch_changes;
+pub use contracts::*;
 
 const WINDOW_ZOOM_STEP: f32 = 0.1;
 const MIN_WINDOW_ZOOM: f32 = 0.5;

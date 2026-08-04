@@ -21,7 +21,7 @@ license = "GPL-3.0-only"
 anyhow = { workspace = true }
 iced = { workspace = true, features = ["highlighter"] }
 tokio = { workspace = true }
-pikchr_pro = { version = "1.0.0", path = "../pikchr_pro" }
+pikchr_pro = { version = "1.1.0", path = "../pikchr_pro" }
 thiserror = { workspace = true }
 rfd = { workspace = true }
 image =  { workspace = true }

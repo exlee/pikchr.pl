@@ -12,7 +12,7 @@ pub fn render(output_type: OutputType, source: &str) -> Result<String, String> {
         OutputType::Svgbob => svgbob::to_svg_with_settings(
             source,
             &svgbob::Settings {
-                font_family:      SPACE_MONO_NAME.to_string(),
+                font_family: SPACE_MONO_NAME.to_string(),
                 ..Default::default()
             },
         ),

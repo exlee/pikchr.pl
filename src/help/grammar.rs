@@ -205,7 +205,6 @@ impl Ctx {
     }
 }
 
-
 fn grammar_doc() -> &'static GrammarDoc {
     static DOC: OnceLock<GrammarDoc> = OnceLock::new();
     DOC.get_or_init(|| parse_doc(PIKCHR_GRAMMAR_MD))
@@ -410,7 +409,7 @@ fn build_job(
                 egui::Color32::TRANSPARENT
             },
             underline: if s.link_target.is_some() {
-                egui::Stroke::new(1.0, accent)
+                egui::Stroke::new(1.0_f32, accent)
             } else {
                 egui::Stroke::NONE
             },

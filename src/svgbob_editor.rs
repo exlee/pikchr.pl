@@ -14,9 +14,9 @@ use crate::{
 };
 
 mod canvas;
-use canvas::*;
 #[cfg(feature = "perf-workloads")]
 pub(crate) use canvas::perf_canvas_workload;
+use canvas::*;
 
 type EditSnapshot = (egui::text::CCursorRange, String);
 type EditUndoer = egui::util::undoer::Undoer<EditSnapshot>;
@@ -103,7 +103,6 @@ pub struct SvgbobEditor {
     #[serde(skip)]
     last_input_position: Option<(usize, usize)>,
 }
-
 
 impl SvgbobEditor {
     pub fn new(id: egui::Id, target_svg: egui::Id) -> Self {
@@ -248,12 +247,8 @@ impl SvgbobEditor {
         };
 
         let before = (range, self.content.clone());
-        let (content, cursor, last_input_position) = replace_text(
-            self.content.clone(),
-            range,
-            &text,
-            self.last_input_position,
-        );
+        let (content, cursor, last_input_position) =
+            replace_text(self.content.clone(), range, &text, self.last_input_position);
         let content_changed = content != self.content;
         let cursor_range = egui::text::CCursorRange::one(egui::text::CCursor::new(cursor));
         if content_changed {
@@ -506,7 +501,6 @@ impl SvgbobEditor {
         content_changed
     }
 }
-
 
 impl EditorWindow for SvgbobEditor {
     fn get_editor_window(&self) -> mini_window::EditorWindowView<'_> {
